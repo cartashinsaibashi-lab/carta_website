@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#141138">
+  <title>CARTA POKER SERIES | トーナメントスケジュール</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Oswald:wght@500;600;700&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-theme="wolf">
+
+  <!-- ヘッダー -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <span class="brand-mark">♠</span>
+        <div class="brand-text">
+          <span class="brand-name">CARTA POKER SERIES</span>
+          <span class="brand-sub">Official Tournament Schedule</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- 大会種別タブ -->
+    <nav class="category-tabs" id="categoryTabs" aria-label="大会種別">
+      <button class="category-tab is-active" data-category="wolf">
+        <span class="category-tab-icon icon-wolf">♠</span>ウルフ
+        <span class="category-tab-count" data-count="wolf">0</span>
+      </button>
+      <button class="category-tab" data-category="utage">
+        <span class="category-tab-icon icon-utage">♥</span>宴
+        <span class="category-tab-count" data-count="utage">0</span>
+      </button>
+      <button class="category-tab" data-category="other">
+        <span class="category-tab-icon icon-other">♦</span>その他
+        <span class="category-tab-count" data-count="other">0</span>
+      </button>
+    </nav>
+
+    <!-- 日付選択 -->
+    <div class="date-strip" aria-label="日付で絞り込み">
+      <div class="month-nav" id="monthNav"></div>
+      <button class="date-cell date-cell-all" id="dateAllBtn" type="button">
+        <span class="date-all-label">全日程</span>
+      </button>
+      <div class="date-strip-scroll" id="dateStrip"></div>
+    </div>
+
+    <!-- 開催状況フィルタ -->
+    <div class="status-filter" id="statusFilter" aria-label="開催状況フィルタ">
+      <button class="status-pill is-active" data-status="all">すべて</button>
+      <button class="status-pill" data-status="running"><span class="dot dot-live"></span>進行中</button>
+      <button class="status-pill" data-status="future"><span class="dot dot-future"></span>開催予定</button>
+      <button class="status-pill" data-status="past"><span class="dot dot-past"></span>終了</button>
+      <button class="status-pill fav-pill" id="favFilter" type="button"><span class="fav-pill-star">★</span>お気に入り</button>
+    </div>
+
+    <!-- イベント一覧(カード + アコーディオン) -->
+    <section class="event-list" id="eventList"></section>
+
+    <p class="empty-message" id="emptyMessage" hidden>該当する大会がありません。</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>© 2026 CARTA POKER SERIES — このページはデザイン確認用モックです。表示データはすべてダミーです。</p>
+    </div>
+  </footer>
+
+  <!-- 申込モーダル -->
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" id="modalBox" role="dialog" aria-modal="true" aria-label="大会申込"></div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
