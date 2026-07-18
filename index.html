@@ -27,6 +27,9 @@
 
   <main class="container">
 
+    <!-- 種別タブ・日付・状況フィルタ(スクロール中も上部に固定) -->
+    <div class="filter-bar" id="filterBar">
+
     <!-- 大会種別タブ -->
     <nav class="category-tabs" id="categoryTabs" aria-label="大会種別">
       <button class="category-tab is-active" data-category="wolf">
@@ -60,6 +63,8 @@
       <button class="status-pill" data-status="past"><span class="dot dot-past"></span>終了</button>
       <button class="status-pill fav-pill" id="favFilter" type="button"><span class="fav-pill-star">★</span>お気に入り</button>
     </div>
+
+    </div><!-- /.filter-bar -->
 
     <!-- イベント一覧(カード + アコーディオン) -->
     <section class="event-list" id="eventList"></section>

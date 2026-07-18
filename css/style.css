@@ -232,20 +232,26 @@ body[data-theme="utage"] .brand-name { font-family: var(--font-mincho); letter-s
   text-transform: uppercase;
 }
 
+/* ---------- フィルタバー(種別タブ + 日付 + 状況フィルタをまとめて上部固定) ---------- */
+
+.filter-bar {
+  position: sticky;
+  top: var(--header-h);
+  z-index: 95;
+  background: var(--bg);
+  padding-top: 12px;
+  transition: background-color .45s ease;
+}
+
 /* ---------- 大会種別タブ ---------- */
 
 .category-tabs {
-  position: sticky;
-  top: var(--header-h);
-  z-index: 90;
   display: flex;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 0;
   margin-bottom: 20px;
   border-bottom: 2px solid var(--border);
   background: var(--header-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   transition: background-color .45s ease, border-color .45s ease;
 }
 
@@ -1242,6 +1248,11 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 
 .row-winner .col-player { color: var(--accent-bright); font-weight: 700; }
 
+/* ---------- 賞金分配(Prize)パネル ---------- */
+
+.prize-table .col-pos { width: 56px; text-align: center; font-weight: 700; }
+.prize-table .col-prize { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.02em; }
+
 /* ---------- ライブ状況パネル ---------- */
 
 .live-board {
@@ -1459,6 +1470,34 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
 }
 
 .reg-applied-note { font-size: 12px; color: var(--text-faint); margin-top: 10px; }
+
+/* 受付ステータス文言(申込ボタンの代わりに状態を明示) */
+.reg-status-msg {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.reg-status-msg.msg-open {
+  color: var(--future);
+  background: rgba(var(--future-rgb), 0.1);
+  border-color: rgba(var(--future-rgb), 0.4);
+}
+
+.reg-status-msg.msg-soon {
+  color: var(--accent-bright);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.4);
+}
+
+.reg-status-msg.msg-closed {
+  color: var(--past);
+  background: rgba(var(--past-rgb), 0.1);
+  border-color: rgba(var(--past-rgb), 0.35);
+}
 
 /* ---------- 申込モーダル ---------- */
 

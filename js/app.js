@@ -108,6 +108,7 @@
     if (ev.status === 'future') tabs.push({ key: 'reg', label: '申込状況' });
     if (ev.status === 'past') tabs.push({ key: 'results', label: '結果' });
     tabs.push({ key: 'info', label: '大会情報' });
+    tabs.push({ key: 'prize', label: 'Prize' });
     tabs.push({ key: 'structure', label: 'ストラクチャー' });
     return tabs;
   }
@@ -186,9 +187,9 @@
     }).join('');
     return (
       '<div class="result-summary">' +
-      summaryItem('総エントリー', num(ev.stats.entries)) +
-      summaryItem('プライズプール', yen(ev.stats.prizePool)) +
-      summaryItem('入賞', ev.stats.itm + ' 名') +
+      summaryItem('Total Entries', num(ev.stats.entries)) +
+      summaryItem('Prize Pool', yen(ev.stats.prizePool)) +
+      summaryItem('In the Money', ev.stats.itm + ' 名') +
       '</div>' +
       '<div class="table-scroll"><table class="data-table results-table">' +
       '<thead><tr><th>順位</th><th>プレイヤー</th><th>賞金</th>' + (hasBounty ? '<th>バウンティ</th>' : '') + '</tr></thead>' +
@@ -218,12 +219,12 @@
       '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + '<br>次の休憩 ' + esc(lv.nextBreak) + '</div>' +
       '  </div>' +
       '  <div class="live-stats">' +
-      liveStat('エントリー', num(ev.stats.entries)) +
-      liveStat('残りプレイヤー', num(ev.stats.players)) +
-      liveStat('稼働テーブル', num(lv.tables)) +
-      liveStat('アベレージ', num(ev.stats.avgStack) + ' 点') +
-      liveStat('トータルチップ', num(ev.stats.totalChips)) +
-      liveStat('プライズプール', yen(ev.stats.prizePool)) +
+      liveStat('Entries', num(ev.stats.entries)) +
+      liveStat('Remaining Players', num(ev.stats.players)) +
+      liveStat('Table', num(lv.tables)) +
+      liveStat('Average Chips', num(ev.stats.avgStack) + ' 点') +
+      liveStat('Total Chips', num(ev.stats.totalChips)) +
+      liveStat('Prize Pool', yen(ev.stats.prizePool)) +
       '  </div>' +
       '</div>' +
       '<p class="live-note"><span class="dot dot-live"></span>本番では PokerLens API から一定間隔で最新状況を取得して自動更新します。</p>'
@@ -243,6 +244,13 @@
     var reg = ev.registration;
     var pct = reg.cap ? Math.min(100, Math.round((reg.entries / reg.cap) * 100)) : 0;
     var stateCls = reg.state === 'open' ? 'reg-open' : reg.state === 'openSoon' ? 'reg-soon' : 'reg-closed';
+    /* 受付ステータス(本番の subscriptionStatus: opened | openSoon | closed)に応じた文言 */
+    var statusMsgCls = reg.state === 'open' ? 'msg-open' : reg.state === 'openSoon' ? 'msg-soon' : 'msg-closed';
+    var statusMsg = reg.state === 'open'
+      ? '現在、参加を受付中です。'
+      : reg.state === 'openSoon'
+        ? 'この大会はまだ募集を開始していません。'
+        : 'この大会の受付は締め切りました。';
     var options = reg.options.map(function (o) {
       return (
         '<div class="reg-option">' +
@@ -252,7 +260,6 @@
         '</div>'
       );
     }).join('');
-    var applied = isApplied(ev.id);
     return (
       '<div class="reg-head">' +
       '  <span class="reg-state ' + stateCls + '">' + esc(reg.stateLabel) + '</span>' +
@@ -264,11 +271,58 @@
       '</div>' +
       '<div class="reg-options">' + options + '</div>' +
       '<p class="reg-note">' + esc(reg.note) + '</p>' +
-      '<button class="reg-button" type="button" data-reg="' + esc(ev.id) + '"' +
-      (reg.state !== 'open' || applied ? ' disabled' : '') + '>' +
-      (applied ? '✓ 申込済み' : reg.state === 'open' ? 'この大会に申し込む' : '受付開始前です') +
-      '</button>' +
-      (applied ? '<p class="reg-applied-note">申込内容は完了画面の QR コードまたはマイページ(モック未実装)から確認できます。</p>' : '')
+      '<p class="reg-status-msg ' + statusMsgCls + '">' + statusMsg + '</p>'
+    );
+  }
+
+  /* 賞金分配(Prize)パネル — 開催中・受付中・終了の全大会に共通で表示。
+   * 本番では GET /v1/event/{id}/payouts から確定した支払い構造を取得する。 */
+  function prizePanel(ev) {
+    var pool = ev.stats.prizePool || ev.guarantee || 0;   // 受付中は保証賞金を基準に表示
+    var poolKnown = pool > 0;
+
+    /* 上位入賞の分配率(モック用の標準配分モデル) */
+    var payouts = [
+      [1, 0.240], [2, 0.150], [3, 0.105], [4, 0.078], [5, 0.060],
+      [6, 0.046], [7, 0.036], [8, 0.028], [9, 0.022]
+    ];
+    var restPct = 0.235;   // 10 位以降の合計
+
+    function pctLabel(v) { return (v * 100).toFixed(1).replace(/\.0$/, '') + '%'; }
+    function prizeCell(v) { return poolKnown ? yen(Math.round(pool * v / 1000) * 1000) : '—'; }
+
+    var rows = payouts.map(function (p) {
+      var posCls = p[0] === 1 ? ' class="row-winner"' : '';
+      var medalCls = p[0] <= 3 ? ' pos-' + p[0] : '';
+      return (
+        '<tr' + posCls + '>' +
+        '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + p[0] + '</span></td>' +
+        '<td>' + pctLabel(p[1]) + '</td>' +
+        '<td class="col-prize">' + prizeCell(p[1]) + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+    rows +=
+      '<tr><td class="col-pos">10+</td>' +
+      '<td>' + pctLabel(restPct) + '</td>' +
+      '<td class="col-prize">' + prizeCell(restPct) + '</td></tr>';
+
+    var poolLabel = ev.status === 'future' ? 'Guaranteed Prize Pool' : 'Prize Pool';
+    var summary =
+      '<div class="result-summary">' +
+      summaryItem(poolLabel, poolKnown ? yen(pool) : '未定') +
+      summaryItem('Guarantee', ev.guarantee ? yen(ev.guarantee) : 'なし') +
+      summaryItem('In the Money', ev.stats.itm > 0 ? ev.stats.itm + ' 名' : '未定') +
+      '</div>';
+
+    return (
+      summary +
+      '<h3 class="detail-notes-title">Payout</h3>' +
+      '<div class="table-scroll"><table class="data-table prize-table">' +
+      '<thead><tr><th>Place</th><th>Share</th><th>Prize</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '</table></div>' +
+      '<p class="reg-note">※ 表示はモック用の賞金分配モデルです。確定した支払い構造は本番では PokerLens API (GET /v1/event/{id}/payouts) から取得します。</p>'
     );
   }
 
@@ -279,6 +333,7 @@
       case 'results': return resultsPanel(ev);
       case 'live': return livePanel(ev);
       case 'reg': return regPanel(ev);
+      case 'prize': return prizePanel(ev);
     }
     return '';
   }
@@ -445,15 +500,6 @@
         favBtn.addEventListener('click', handleFav);
         favBtn.addEventListener('keydown', function (e) {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleFav(e); }
-        });
-      }
-
-      /* 申込ボタン → 申込モーダル */
-      var regBtn = card.querySelector('.reg-button[data-reg]');
-      if (regBtn && !regBtn.disabled) {
-        regBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          openRegModal(findEvent(regBtn.dataset.reg));
         });
       }
     });

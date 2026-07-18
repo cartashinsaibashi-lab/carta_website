@@ -204,12 +204,12 @@ var MOCK_EVENTS = [
     structure: STRUCTURE_DEEP,
     stats: { entries: 0, players: 0, avgStack: 0, totalChips: 0, prizePool: 0, itm: 0 },
     registration: {
-      state: 'open',
-      stateLabel: '受付中',
-      entries: 158,
+      state: 'closed',
+      stateLabel: '受付終了',
+      entries: 240,
       cap: 240,
-      closesLabel: '7/18 (土) 17:30(Lv.10 終了)まで',
-      note: 'Day1A / Day1B いずれかを勝ち抜けば Day2 へ進出できます。',
+      closesLabel: '事前受付は終了しました(定員到達)',
+      note: '事前オンライン受付は定員に達したため終了しました。当日の会場受付の有無はお問い合わせください。',
       options: [
         { label: '通常バイイン', amount: 23000, chips: '60,000 点' }
       ]
