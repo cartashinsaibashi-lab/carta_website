@@ -375,7 +375,7 @@
           : '';
 
     return (
-      '<article class="event-card st-' + esc(ev.status) + ' cat-' + esc(ev.category) + (opened ? ' is-open' : '') + '" data-id="' + esc(ev.id) + '">' +
+      '<article id="event-' + esc(ev.id) + '" class="event-card st-' + esc(ev.status) + ' cat-' + esc(ev.category) + (opened ? ' is-open' : '') + '" data-id="' + esc(ev.id) + '">' +
       '  <button class="card-head" type="button" aria-expanded="' + opened + '">' +
       '    <div class="card-date"><span class="card-date-text">' + esc(ev.dateLabel) + '</span>' +
       '      <span class="card-flight">' + esc(ev.flight) + '</span></div>' +
@@ -434,6 +434,64 @@
     emptyEl.hidden = events.length > 0;
     bindCards();
     startTimers();
+    syncOpenParam();
+  }
+
+  /* ---------- アコーディオンの URL 連携 & スクロール ----------
+   * 開いているカードを ?event=<id> に反映し、開いたときは常に「固定バーの直下」へ
+   * カードのヘッダーが揃う位置までスクロールする。開閉アニメーション確定後に位置を
+   * 計算するため、表示中のカード数や他カードの開閉状態に挙動が左右されない。 */
+
+  var OPEN_PARAM = 'event';
+
+  function syncOpenParam() {
+    try {
+      var params = new URLSearchParams(location.search);
+      if (state.openedId) params.set(OPEN_PARAM, state.openedId);
+      else params.delete(OPEN_PARAM);
+      var qs = params.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+    } catch (e) { /* file:// 等で replaceState 不可の場合は無視 */ }
+  }
+
+  function scrollToOpenCard(card) {
+    var header = document.querySelector('.site-header');
+    var bar = document.querySelector('.filter-bar');
+    /* 固定表示される領域(ヘッダー + フィルタバー)の高さ + 余白 */
+    var stuck = (header ? header.offsetHeight : 0) + (bar ? bar.offsetHeight : 0) + 12;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var run = function () {
+      var y = card.getBoundingClientRect().top + window.pageYOffset - stuck;
+      window.scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' });
+    };
+    /* レイアウト変化(他カードの折りたたみ等)が落ち着いてから位置を確定 */
+    var body = card.querySelector('.card-body');
+    var done = false;
+    var finish = function () { if (done) return; done = true; run(); };
+    if (body) body.addEventListener('transitionend', finish, { once: true });
+    setTimeout(finish, 380);
+  }
+
+  /* 初回表示時、?event=<id> が指定されていれば該当カードを表示できる状態にする */
+  function applyOpenParam() {
+    var id = new URLSearchParams(location.search).get(OPEN_PARAM);
+    if (!id) return;
+    var ev = findEvent(id);
+    if (!ev) { syncOpenParam(); return; }   // 不正な id はパラメータを除去
+    state.category = ev.category;
+    state.status = 'all';
+    state.scope = 'all';
+    state.date = null;
+    state.favOnly = false;
+    state.openedId = id;
+    document.querySelectorAll('.category-tab').forEach(function (t) {
+      t.classList.toggle('is-active', t.dataset.category === ev.category);
+    });
+    document.querySelectorAll('.status-pill').forEach(function (t) {
+      t.classList.toggle('is-active', t.dataset.status === 'all');
+    });
+    var favF = document.getElementById('favFilter');
+    if (favF) favF.classList.remove('is-active');
   }
 
   /* タブの数字 = 進行中 + 開催予定の大会数(終了した大会は含めない) */
@@ -465,11 +523,8 @@
           c.querySelector('.card-head').setAttribute('aria-expanded', open);
         });
 
-        if (willOpen) {
-          setTimeout(function () {
-            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }, 320);
-        }
+        syncOpenParam();
+        if (willOpen) scrollToOpenCard(card);
       });
 
       card.querySelectorAll('.detail-tab').forEach(function (tab) {
@@ -911,9 +966,14 @@
 
   /* ---------- 初期化 ---------- */
 
+  applyOpenParam();               // ?event=<id> があれば該当カードを開いた状態で表示
   applyTheme(state.category);
   updateCounts();
   renderMonthNav();
   renderDateStrip();
   render();
+  if (state.openedId) {
+    var initialCard = document.getElementById('event-' + state.openedId);
+    if (initialCard) scrollToOpenCard(initialCard);
+  }
 })();
