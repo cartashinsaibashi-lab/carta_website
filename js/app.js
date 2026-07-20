@@ -86,14 +86,6 @@
     });
   }
 
-  function statusMeta(status) {
-    return {
-      running: { label: 'LIVE 進行中', cls: 'badge-running' },
-      future: { label: '開催予定', cls: 'badge-future' },
-      past: { label: '終了', cls: 'badge-past' }
-    }[status];
-  }
-
   function fmtSec(total) {
     var m = Math.floor(total / 60);
     var s = total % 60;
@@ -104,12 +96,12 @@
 
   function tabsFor(ev) {
     var tabs = [];
-    if (ev.status === 'running') tabs.push({ key: 'live', label: 'ライブ状況' });
-    if (ev.status === 'future') tabs.push({ key: 'reg', label: '申込状況' });
-    if (ev.status === 'past') tabs.push({ key: 'results', label: '結果' });
-    tabs.push({ key: 'info', label: '大会情報' });
+    if (ev.status === 'running') tabs.push({ key: 'live', label: 'Live' });
+    if (ev.status === 'future') tabs.push({ key: 'reg', label: 'Registration' });
+    if (ev.status === 'past') tabs.push({ key: 'results', label: 'Results' });
+    tabs.push({ key: 'info', label: 'Info' });
     tabs.push({ key: 'prize', label: 'Prize' });
-    tabs.push({ key: 'structure', label: 'ストラクチャー' });
+    tabs.push({ key: 'structure', label: 'Structure' });
     return tabs;
   }
 
@@ -117,15 +109,15 @@
 
   function infoPanel(ev) {
     var rows = [
-      ['開催日時', ev.dateLabel + ' 開始'],
-      ['会場', ev.venue],
-      ['バイイン', yen(ev.buyin) + ' + ' + yen(ev.fee) + '(合計 ' + yen(ev.buyin + ev.fee) + ')'],
-      ['保証賞金', ev.guarantee ? yen(ev.guarantee) : 'なし'],
-      ['スタートスタック', num(ev.startingStack) + ' 点'],
-      ['レベル時間', ev.levelMinutes + ' 分'],
-      ['レイトレジスト', ev.lateReg],
-      ['リエントリー', ev.reentry],
-      ['ゲーム', ev.gameType]
+      ['Date & Time', ev.dateLabel + ' Start'],
+      ['Venue', ev.venue],
+      ['Buy-in', yen(ev.buyin) + ' + ' + yen(ev.fee) + ' (total ' + yen(ev.buyin + ev.fee) + ')'],
+      ['Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None'],
+      ['Starting Stack', num(ev.startingStack) + ' chips'],
+      ['Level Length', ev.levelMinutes + ' min'],
+      ['Late Reg', ev.lateReg],
+      ['Re-entry', ev.reentry],
+      ['Game', ev.gameType]
     ];
     var dl = rows.map(function (r) {
       return '<div class="info-row"><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>';
@@ -134,7 +126,7 @@
     var detailsHtml = '';
     if (ev.details && ev.details.length) {
       detailsHtml =
-        '<h3 class="detail-notes-title">大会詳細</h3>' +
+        '<h3 class="detail-notes-title">Details</h3>' +
         '<ul class="detail-notes">' +
         ev.details.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') +
         '</ul>';
@@ -147,25 +139,31 @@
   }
 
   function structurePanel(ev) {
+    /* レイトレジ終了は Lv 列に inline で入れず全幅の注記行にすることで、
+     * 4 列テーブルが横スワイプ無しでも画面幅に収まるようにする。 */
     var body = ev.structure.map(function (row) {
       if (row.type === 'break') {
-        return '<tr class="row-break"><td colspan="4">— 休憩 ' + row.minutes + ' 分 —</td></tr>';
+        return '<tr class="row-break"><td colspan="4">— Break ' + row.minutes + ' min —</td></tr>';
       }
       var cls = row.lateRegClose ? ' class="row-latereg"' : '';
-      var note = row.lateRegClose ? ' <span class="latereg-tag">レイトレジ終了</span>' : '';
-      return (
+      var levelRow = (
         '<tr' + cls + '>' +
-        '<td>' + row.level + note + '</td>' +
+        '<td>' + row.level + '</td>' +
         '<td>' + num(row.sb) + ' / ' + num(row.bb) + '</td>' +
         '<td>' + num(row.ante) + '</td>' +
-        '<td>' + row.minutes + '分</td>' +
+        '<td>' + row.minutes + 'm</td>' +
         '</tr>'
       );
+      if (row.lateRegClose) {
+        levelRow += '<tr class="row-latereg-note"><td colspan="4">' +
+          '<span class="latereg-tag">Late Reg Close</span></td></tr>';
+      }
+      return levelRow;
     }).join('');
     return (
-      '<div class="structure-meta">スタートスタック ' + num(ev.startingStack) + ' 点 / BB アンティ方式</div>' +
+      '<div class="structure-meta">Starting Stack ' + num(ev.startingStack) + ' / BB Ante format</div>' +
       '<div class="table-scroll"><table class="data-table structure-table">' +
-      '<thead><tr><th>Lv</th><th>ブラインド (SB/BB)</th><th>アンティ (BB)</th><th>時間</th></tr></thead>' +
+      '<thead><tr><th>Lv</th><th>Blinds (SB/BB)</th><th>Ante</th><th>Time</th></tr></thead>' +
       '<tbody>' + body + '</tbody>' +
       '</table></div>'
     );
@@ -189,10 +187,10 @@
       '<div class="result-summary">' +
       summaryItem('Total Entries', num(ev.stats.entries)) +
       summaryItem('Prize Pool', yen(ev.stats.prizePool)) +
-      summaryItem('In the Money', ev.stats.itm + ' 名') +
+      summaryItem('In the Money', ev.stats.itm + ' players') +
       '</div>' +
       '<div class="table-scroll"><table class="data-table results-table">' +
-      '<thead><tr><th>順位</th><th>プレイヤー</th><th>賞金</th>' + (hasBounty ? '<th>バウンティ</th>' : '') + '</tr></thead>' +
+      '<thead><tr><th>Rank</th><th>Player</th><th>Prize</th>' + (hasBounty ? '<th>Bounty</th>' : '') + '</tr></thead>' +
       '<tbody>' + body + '</tbody>' +
       '</table></div>'
     );
@@ -216,18 +214,18 @@
       '    <div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
       '      <span class="live-ante">ante ' + num(lv.ante) + '</span></div>' +
       '    <div class="live-timer" data-timer data-remaining="' + lv.remainingSec + '">' + fmtSec(lv.remainingSec) + '</div>' +
-      '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + '<br>次の休憩 ' + esc(lv.nextBreak) + '</div>' +
+      '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + '<br>Next break ' + esc(lv.nextBreak) + '</div>' +
       '  </div>' +
       '  <div class="live-stats">' +
       liveStat('Entries', num(ev.stats.entries)) +
       liveStat('Remaining Players', num(ev.stats.players)) +
       liveStat('Table', num(lv.tables)) +
-      liveStat('Average Chips', num(ev.stats.avgStack) + ' 点') +
+      liveStat('Average Chips', num(ev.stats.avgStack) + ' chips') +
       liveStat('Total Chips', num(ev.stats.totalChips)) +
       liveStat('Prize Pool', yen(ev.stats.prizePool)) +
       '  </div>' +
       '</div>' +
-      '<p class="live-note"><span class="dot dot-live"></span>本番では PokerLens API から一定間隔で最新状況を取得して自動更新します。</p>'
+      '<p class="live-note"><span class="dot dot-live"></span>In production, live status is fetched from the PokerLens API at regular intervals and updates automatically.</p>'
     );
   }
 
@@ -247,10 +245,10 @@
     /* 受付ステータス(本番の subscriptionStatus: opened | openSoon | closed)に応じた文言 */
     var statusMsgCls = reg.state === 'open' ? 'msg-open' : reg.state === 'openSoon' ? 'msg-soon' : 'msg-closed';
     var statusMsg = reg.state === 'open'
-      ? '現在、参加を受付中です。'
+      ? 'Registration is currently open.'
       : reg.state === 'openSoon'
-        ? 'この大会はまだ募集を開始していません。'
-        : 'この大会の受付は締め切りました。';
+        ? 'Registration for this event has not opened yet.'
+        : 'Registration for this event has closed.';
     var options = reg.options.map(function (o) {
       return (
         '<div class="reg-option">' +
@@ -266,7 +264,7 @@
       '  <span class="reg-close">' + esc(reg.closesLabel) + '</span>' +
       '</div>' +
       '<div class="reg-progress">' +
-      '  <div class="reg-progress-label"><span>申込 ' + num(reg.entries) + ' 名</span><span>定員 ' + num(reg.cap) + ' 名</span></div>' +
+      '  <div class="reg-progress-label"><span>Entries ' + num(reg.entries) + '</span><span>Cap ' + num(reg.cap) + '</span></div>' +
       '  <div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
       '</div>' +
       '<div class="reg-options">' + options + '</div>' +
@@ -310,9 +308,9 @@
     var poolLabel = ev.status === 'future' ? 'Guaranteed Prize Pool' : 'Prize Pool';
     var summary =
       '<div class="result-summary">' +
-      summaryItem(poolLabel, poolKnown ? yen(pool) : '未定') +
-      summaryItem('Guarantee', ev.guarantee ? yen(ev.guarantee) : 'なし') +
-      summaryItem('In the Money', ev.stats.itm > 0 ? ev.stats.itm + ' 名' : '未定') +
+      summaryItem(poolLabel, poolKnown ? yen(pool) : 'TBD') +
+      summaryItem('Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None') +
+      summaryItem('In the Money', ev.stats.itm > 0 ? ev.stats.itm + ' players' : 'TBD') +
       '</div>';
 
     return (
@@ -322,7 +320,7 @@
       '<thead><tr><th>Place</th><th>Share</th><th>Prize</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '</table></div>' +
-      '<p class="reg-note">※ 表示はモック用の賞金分配モデルです。確定した支払い構造は本番では PokerLens API (GET /v1/event/{id}/payouts) から取得します。</p>'
+      '<p class="reg-note">* This is a mock payout model. The confirmed payout structure is fetched from the PokerLens API (GET /v1/event/{id}/payouts) in production.</p>'
     );
   }
 
@@ -338,10 +336,70 @@
     return '';
   }
 
-  /* ---------- カード ---------- */
+  /* ---------- カード ----------
+   * 参照デザイン: 左に状態パネル / 中央にタイトル + 日時・バイイン /
+   * 下部に 3 セグメント(参加者・種別・賞金)のバー。 */
+
+  /* 大会種別を短縮表記に(NLH 等) */
+  function gameShort(ev) {
+    return /no-?limit hold/i.test(ev.gameType) ? 'NLH' : (ev.tags[0] || ev.gameType);
+  }
+
+  /* dateLabel("7/20 (Mon) 15:00")を日付と開始時刻に分解 */
+  function splitDateTime(label) {
+    var m = /^(.*?)\s+(\d{1,2}:\d{2})\s*$/.exec(label || '');
+    return m ? { date: m[1], time: m[2] } : { date: label || '', time: '' };
+  }
+
+  /* 左の状態パネル(受付中 / 進行中 / 終了) */
+  function headStatus(ev) {
+    if (ev.status === 'running') {
+      return { cls: 's-live', kicker: 'In Progress', main: 'LIVE', sub: 'Lv.' + ev.live.levelIndex, dot: true };
+    }
+    if (ev.status === 'past') {
+      return { cls: 's-ended', kicker: 'Result', main: 'ENDED', sub: 'Final' };
+    }
+    var st = ev.registration ? ev.registration.state : 'open';
+    if (st === 'openSoon') return { cls: 's-soon', kicker: 'Registration', main: 'SOON', sub: 'Opens soon' };
+    if (st === 'closed')   return { cls: 's-closed', kicker: 'Registration', main: 'CLOSED', sub: 'Full' };
+    return { cls: 's-open', kicker: 'Registration', main: 'OPEN', sub: 'Entry now' };
+  }
+
+  /* START 行の 2 列目(状態別) */
+  function headSecondStat(ev) {
+    if (ev.status === 'running') return { k: 'Blinds', v: num(ev.live.sb) + '/' + num(ev.live.bb) };
+    if (ev.status === 'past')    return { k: 'Levels', v: ev.levelMinutes + '-min' };
+    var m = /Lv\.?\s*(\d+)/i.exec(ev.lateReg || '');
+    return { k: 'Reg Close', v: m ? 'Lv.' + m[1] : ev.levelMinutes + '-min' };
+  }
+
+  /* 下部バーの 3 セグメント(参加者 / 種別 / 賞金) */
+  function headSegments(ev) {
+    var players;
+    if (ev.status === 'running') {
+      players = { k: 'Players', v: num(ev.stats.players) + ' / ' + num(ev.stats.entries) };
+    } else if (ev.status === 'future' && ev.registration) {
+      players = { k: 'Players', v: num(ev.registration.entries) + ' / ' + num(ev.registration.cap) };
+    } else {
+      players = { k: 'Entries', v: num(ev.stats.entries) };
+    }
+    var type = { k: 'Type', v: gameShort(ev) + ' / ' + ev.flight };
+    var prize;
+    if (ev.status === 'past') {
+      prize = { k: 'Prize Pool', v: yen(ev.stats.prizePool), prize: true };
+    } else if (ev.guarantee) {
+      prize = { k: 'Prize GTD', v: yen(ev.guarantee), prize: true };
+    } else {
+      prize = { k: 'Prize', v: '—', prize: true };
+    }
+    return [players, type, prize];
+  }
+
+  function headStat(k, v) {
+    return '<span class="card-stat"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></span>';
+  }
 
   function cardHtml(ev) {
-    var meta = statusMeta(ev.status);
     var tabs = tabsFor(ev);
     var opened = state.openedId === ev.id;
 
@@ -360,40 +418,39 @@
       );
     }).join('');
 
-    var tagsHtml = ev.tags.map(function (t) {
-      return '<span class="event-tag">' + esc(t) + '</span>';
-    }).join('');
-
     var fav = isFav(ev.id);
-    var sub = ev.status === 'running'
-      ? '<span class="card-live-info"><span class="dot dot-live"></span>Lv.' + ev.live.levelIndex +
-        ' — ' + num(ev.live.sb) + '/' + num(ev.live.bb) + ' — 残り ' + num(ev.stats.players) + ' 名</span>'
-      : ev.status === 'future' && ev.registration
-        ? '<span class="card-reg-info">申込 ' + num(ev.registration.entries) + ' / ' + num(ev.registration.cap) + ' 名</span>'
-        : ev.results
-          ? '<span class="card-past-info">優勝: ' + esc(ev.results[0].player) + '</span>'
-          : '';
+    var sp = headStatus(ev);
+    var dt = splitDateTime(ev.dateLabel);
+    var sec = headSecondStat(ev);
+    var segHtml = headSegments(ev).map(function (s) {
+      return '<div class="card-seg' + (s.prize ? ' seg-prize' : '') + '">' +
+        '<span class="k">' + esc(s.k) + '</span><span class="v">' + esc(s.v) + '</span></div>';
+    }).join('');
 
     return (
       '<article id="event-' + esc(ev.id) + '" class="event-card st-' + esc(ev.status) + ' cat-' + esc(ev.category) + (opened ? ' is-open' : '') + '" data-id="' + esc(ev.id) + '">' +
       '  <button class="card-head" type="button" aria-expanded="' + opened + '">' +
-      '    <div class="card-date"><span class="card-date-text">' + esc(ev.dateLabel) + '</span>' +
-      '      <span class="card-flight">' + esc(ev.flight) + '</span></div>' +
-      '    <div class="card-main">' +
-      '      <div class="card-title-row">' +
-      '        <span class="status-badge ' + meta.cls + '">' + meta.label + '</span>' +
-      '        <h2 class="card-title">' + esc(ev.name) + '</h2>' +
+      '    <div class="card-top">' +
+      '      <div class="card-status ' + sp.cls + '">' +
+      '        <span class="card-status-kicker">' + esc(sp.kicker) + '</span>' +
+      '        <span class="card-status-main">' + (sp.dot ? '<span class="live-flash"></span>' : '') + esc(sp.main) + '</span>' +
+      '        <span class="card-status-sub">' + esc(sp.sub) + '</span>' +
       '      </div>' +
-      '      <div class="card-sub-row">' + tagsHtml + sub + '</div>' +
+      '      <div class="card-core">' +
+      '        <div class="card-title-row">' +
+      '          <h2 class="card-title">' + esc(ev.name) + '</h2>' +
+      '          <span class="fav-btn' + (fav ? ' is-fav' : '') + '" role="button" tabindex="0" data-fav="' + esc(ev.id) + '" ' +
+      'aria-label="Favorite" aria-pressed="' + fav + '" title="Add to favorites">' + (fav ? '★' : '☆') + '</span>' +
+      '          <span class="card-chevron" aria-hidden="true">▾</span>' +
+      '        </div>' +
+      '        <div class="card-lines">' +
+      '          <div class="card-line">' + headStat('Date', dt.date) + '</div>' +
+      '          <div class="card-line">' + headStat('Start', dt.time) + headStat(sec.k, sec.v) + '</div>' +
+      '          <div class="card-line">' + headStat('Buy-in', yen(ev.buyin + ev.fee)) + headStat('Chips', num(ev.startingStack)) + '</div>' +
+      '        </div>' +
+      '      </div>' +
       '    </div>' +
-      '    <div class="card-buyin">' +
-      '      <span class="card-buyin-amount">' + yen(ev.buyin + ev.fee) + '</span>' +
-      '      <span class="card-buyin-note">' + yen(ev.buyin) + '+' + yen(ev.fee) + '</span>' +
-      (ev.guarantee ? '<span class="card-guarantee">保証 ' + yen(ev.guarantee) + '</span>' : '') +
-      '    </div>' +
-      '    <span class="fav-btn' + (fav ? ' is-fav' : '') + '" role="button" tabindex="0" data-fav="' + esc(ev.id) + '" ' +
-      'aria-label="お気に入り" aria-pressed="' + fav + '" title="お気に入りに登録">' + (fav ? '★' : '☆') + '</span>' +
-      '    <span class="card-chevron" aria-hidden="true">▾</span>' +
+      '    <div class="card-foot">' + segHtml + '</div>' +
       '  </button>' +
       '  <div class="card-body">' +
       '    <div class="card-body-inner">' +
@@ -502,7 +559,7 @@
         el.textContent = MOCK_EVENTS.filter(function (ev) {
           return ev.category === cat && ev.status !== 'past';
         }).length;
-        el.title = '進行中・開催予定の大会数';
+        el.title = 'Live & upcoming tournaments';
       }
     });
   }
@@ -562,7 +619,8 @@
 
   /* ---------- 日付・月セレクター ---------- */
 
-  var DOW_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+  var DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var dateStripEl = document.getElementById('dateStrip');
   var monthNavEl = document.getElementById('monthNav');
   var dateAllBtn = document.getElementById('dateAllBtn');
@@ -573,13 +631,6 @@
 
   function daysInMonth(year, month) {
     return new Date(year, month, 0).getDate();
-  }
-
-  function monthIndex() {
-    for (var i = 0; i < CALENDAR.months.length; i++) {
-      if (CALENDAR.months[i].year === state.dispYear && CALENDAR.months[i].month === state.dispMonth) return i;
-    }
-    return -1;
   }
 
   function monthPickerHtml() {
@@ -593,7 +644,7 @@
     var yearChips = years.map(function (y) {
       return (
         '<button class="mp-year-chip' + (y === state.pickerYear ? ' is-active' : '') + '" ' +
-        'data-year="' + y + '">' + y + '年</button>'
+        'data-year="' + y + '">' + y + '</button>'
       );
     }).join('');
 
@@ -609,30 +660,29 @@
       cells +=
         '<button class="mp-month' + (active ? ' is-active' : '') + '" ' +
         'data-year="' + state.pickerYear + '" data-month="' + m + '"' +
-        (available ? '' : ' disabled') + '>' + m + '月' +
+        (available ? '' : ' disabled') + '>' + MONTH_NAMES[m - 1] +
         (count > 0 ? '<span class="mp-dot"></span>' : '') +
         '</button>';
     }
 
     return '<div class="month-picker"' + (state.pickerOpen ? '' : ' hidden') + '>' +
-      '<div class="mp-title">開催月を選択</div>' +
+      '<div class="mp-title">Select Month</div>' +
       '<div class="mp-years">' + yearChips + '</div>' +
       '<div class="mp-grid">' + cells + '</div>' +
       '</div>';
   }
 
   function renderMonthNav() {
-    var idx = monthIndex();
+    /* 左右の矢印は廃止。年月ラベル(2段表示)をタップして年月ピッカーで選択する。 */
     monthNavEl.innerHTML =
-      '<button class="month-arrow" data-nav="prev" aria-label="前の月"' +
-      (idx <= 0 ? ' disabled' : '') + '>‹</button>' +
       '<button class="month-label' + (state.scope === 'month' ? ' is-active' : '') +
-      (state.pickerOpen ? ' is-open' : '') + '" aria-label="年月を選択" aria-haspopup="true" ' +
+      (state.pickerOpen ? ' is-open' : '') + '" aria-label="Select month" aria-haspopup="true" ' +
       'aria-expanded="' + state.pickerOpen + '">' +
-      state.dispYear + '年' + state.dispMonth + '月' +
+      '<span class="month-label-text">' +
+      '<span class="ml-month">' + MONTH_NAMES[state.dispMonth - 1] + '</span>' +
+      '<span class="ml-year">' + state.dispYear + '</span>' +
+      '</span>' +
       '<span class="month-label-caret">▾</span></button>' +
-      '<button class="month-arrow" data-nav="next" aria-label="次の月"' +
-      (idx >= CALENDAR.months.length - 1 ? ' disabled' : '') + '>›</button>' +
       monthPickerHtml();
   }
 
@@ -652,7 +702,7 @@
       if (dow === 6) cls += ' is-sat';
       if (count === 0) cls += ' no-events';
       html.push(
-        '<button class="' + cls + '" data-day="' + d + '" aria-label="' + state.dispYear + '年' + state.dispMonth + '月' + d + '日">' +
+        '<button class="' + cls + '" data-day="' + d + '" aria-label="' + MONTH_NAMES[state.dispMonth - 1] + ' ' + d + ', ' + state.dispYear + '">' +
         '<span class="date-num">' + d + '</span>' +
         '<span class="date-dow">' + DOW_NAMES[dow] + '</span>' +
         '<span class="date-dot"' + (count === 0 ? ' style="visibility:hidden"' : '') + '></span>' +
@@ -687,13 +737,6 @@
   }
 
   monthNavEl.addEventListener('click', function (e) {
-    var arrow = e.target.closest('.month-arrow');
-    if (arrow && !arrow.disabled) {
-      var idx = monthIndex() + (arrow.dataset.nav === 'next' ? 1 : -1);
-      idx = Math.max(0, Math.min(CALENDAR.months.length - 1, idx));
-      selectMonth(CALENDAR.months[idx].year, CALENDAR.months[idx].month);
-      return;
-    }
     var mp = e.target.closest('.mp-month');
     if (mp) {
       selectMonth(Number(mp.dataset.year), Number(mp.dataset.month));
@@ -781,7 +824,7 @@
   }
 
   function modalStepsHtml() {
-    var steps = [['login', 'ログイン'], ['confirm', '内容確認'], ['done', '完了']];
+    var steps = [['login', 'Log In'], ['confirm', 'Confirm'], ['done', 'Done']];
     var keys = steps.map(function (s) { return s[0]; });
     var cur = keys.indexOf(modal.step);
     return '<ol class="modal-steps">' + steps.map(function (s, i) {
@@ -811,7 +854,7 @@
     return (
       '<div class="modal-event">' +
       '<span class="modal-event-name">' + esc(ev.name) + '</span>' +
-      '<span class="modal-event-meta">' + esc(ev.dateLabel) + ' 開始 / ' + esc(ev.venue) + '</span>' +
+      '<span class="modal-event-meta">' + esc(ev.dateLabel) + ' Start / ' + esc(ev.venue) + '</span>' +
       '</div>'
     );
   }
@@ -820,19 +863,19 @@
     var ev = modal.ev;
     var html =
       '<div class="modal-head">' +
-      '<h2 class="modal-title">大会申込</h2>' +
-      '<button class="modal-close" type="button" data-action="close" aria-label="閉じる">×</button>' +
+      '<h2 class="modal-title">Tournament Entry</h2>' +
+      '<button class="modal-close" type="button" data-action="close" aria-label="Close">×</button>' +
       '</div>' + modalStepsHtml();
 
     if (modal.step === 'login') {
       html +=
         modalSummaryHtml(ev) +
-        '<p class="modal-note">申込にはアカウントでのログインが必要です。' +
-        '<br><span class="modal-mock-note">※ モック画面です。本番では PokerLens 認証(PLAYERS+ 連携)を行います。</span></p>' +
-        '<label class="form-label">メールアドレス<input class="form-input" type="email" placeholder="player@example.com"></label>' +
-        '<label class="form-label">パスワード<input class="form-input" type="password" placeholder="********"></label>' +
-        '<button class="modal-primary" type="button" data-action="login">ログインして申込に進む</button>' +
-        '<p class="modal-sub">アカウントをお持ちでない方は <a href="#" data-action="login">新規登録(モック)</a></p>';
+        '<p class="modal-note">You need to log in to your account to enter.' +
+        '<br><span class="modal-mock-note">* This is a mock screen. Production uses PokerLens authentication (PLAYERS+ integration).</span></p>' +
+        '<label class="form-label">Email<input class="form-input" type="email" placeholder="player@example.com"></label>' +
+        '<label class="form-label">Password<input class="form-input" type="password" placeholder="********"></label>' +
+        '<button class="modal-primary" type="button" data-action="login">Log in and continue</button>' +
+        '<p class="modal-sub">Don\'t have an account? <a href="#" data-action="login">Sign up (mock)</a></p>';
     } else if (modal.step === 'confirm') {
       var reg = ev.registration;
       var options = reg.options.map(function (o, i) {
@@ -847,27 +890,27 @@
       }).join('');
       html +=
         modalSummaryHtml(ev) +
-        '<h3 class="modal-section-title">バイインを選択</h3>' +
+        '<h3 class="modal-section-title">Select Buy-in</h3>' +
         '<div class="radio-group">' + options + '</div>' +
-        '<h3 class="modal-section-title">お支払い</h3>' +
-        '<p class="modal-note">当日、会場受付にてお支払いください(現金 / カルタドル)。</p>' +
+        '<h3 class="modal-section-title">Payment</h3>' +
+        '<p class="modal-note">Please pay at the venue reception on the day (cash / Carta Dollars).</p>' +
         '<label class="agree-row"><input type="checkbox" id="agreeChk"' + (modal.agreed ? ' checked' : '') + '>' +
-        '「大会情報」タブの大会詳細・注意事項を確認し、同意します</label>' +
-        '<button class="modal-primary" type="button" data-action="confirm"' + (modal.agreed ? '' : ' disabled') + '>申込を確定する</button>';
+        'I have read and agree to the details and notes on the Info tab.</label>' +
+        '<button class="modal-primary" type="button" data-action="confirm"' + (modal.agreed ? '' : ' disabled') + '>Confirm entry</button>';
     } else {
       var opt = ev.registration.options[modal.optionIndex];
       html +=
         '<div class="done-mark">✓</div>' +
-        '<h3 class="done-title">申込が完了しました</h3>' +
+        '<h3 class="done-title">Entry complete</h3>' +
         modalSummaryHtml(ev) +
         '<div class="done-detail">' +
         '<span>' + esc(opt.label) + ' / ' + esc(opt.chips) + '</span>' +
-        '<span class="done-amount">' + yen(opt.amount) + '(当日払い)</span>' +
+        '<span class="done-amount">' + yen(opt.amount) + ' (pay on the day)</span>' +
         '</div>' +
         qrHtml(ev.id) +
-        '<p class="done-regnum">申込番号: <strong>' + regNumber(ev) + '</strong></p>' +
-        '<p class="modal-note">当日は受付にてこの QR コードをご提示ください。申込の確認・キャンセルはマイページ(モック未実装)から行えます。</p>' +
-        '<button class="modal-primary" type="button" data-action="close">閉じる</button>';
+        '<p class="done-regnum">Entry No.: <strong>' + regNumber(ev) + '</strong></p>' +
+        '<p class="modal-note">Please show this QR code at reception on the day. You can review or cancel your entry from My Page (not implemented in this mock).</p>' +
+        '<button class="modal-primary" type="button" data-action="close">Close</button>';
     }
 
     modalBox.innerHTML = html;
