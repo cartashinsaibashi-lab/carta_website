@@ -362,27 +362,50 @@ body[data-theme="wolf"] .category-tab[data-category="wolf"].is-active {
 .month-arrow:hover:not(:disabled) { background: var(--row-hover); color: var(--text); }
 .month-arrow:disabled { opacity: 0.25; cursor: default; }
 
-/* セレクトボックス風の年月ボタン(押せることが分かる見た目に) */
+/* セレクトボックス風の年月ボタン(押せることが分かる見た目に)
+ * 矢印は廃止。月(略称)と年を 2 段表示にして横幅を抑える。 */
 .month-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-family: var(--font-display);
-  font-size: 14px;
   font-weight: 600;
   color: var(--text);
   background: var(--bg-inset);
   border: 1px solid var(--border-strong);
-  padding: 8px 12px;
+  padding: 5px 9px;
   border-radius: 8px;
   white-space: nowrap;
   transition: border-color .2s, background .2s, color .2s;
+}
+
+.month-label-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.04;
+}
+
+.ml-month {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ml-year {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
 }
 
 .month-label:hover {
   border-color: var(--accent);
   color: var(--accent-bright);
 }
+
+.month-label:hover .ml-year { color: var(--accent-bright); }
+.month-label.is-active .ml-year { color: var(--accent-contrast); }
 
 .month-label-caret {
   font-size: 9px;
@@ -539,7 +562,9 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
 .date-strip-scroll {
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 5px;
+  flex: 1 1 0;
+  min-width: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -548,14 +573,17 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
 
 .date-strip-scroll::-webkit-scrollbar { display: none; }
 
+/* 日付セルの幅は「表示領域の 1/5.5」。ちょうど 5.5 日分が見える幅になるので
+ * 6 日目が少し覗いてスクロールできることが伝わる。両端は clamp で頭打ち。 */
 .date-cell {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  width: clamp(40px, calc((100% - 25px) / 5.5), 58px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1px;
-  min-width: 48px;
+  min-width: 0;
   min-height: 56px;
   padding: 5px 4px 4px;
   background: none;
@@ -627,9 +655,12 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
 
 /* 全日程ボタン: スクロール領域の外に固定配置(日付と重ならない) */
 .date-cell-all {
-  flex-shrink: 0;
-  min-width: 54px;
-  margin-right: 10px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 46px;
+  padding-left: 8px;
+  padding-right: 8px;
+  margin-right: 6px;
   border: 1px dashed var(--border-strong);
   background: var(--bg-inset);
 }
@@ -654,14 +685,22 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
 
 .status-filter {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
   margin-bottom: 24px;
+}
+
+/* 上段(すべて/お気に入り) と 下段(開催状況) の 2 段 */
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .status-pill {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   min-height: 38px;
   background: var(--bg-elevated);
@@ -754,186 +793,222 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
   border-left-color: rgba(var(--past-rgb), 0.55);
 }
 
-.event-card.st-past .card-head { opacity: 0.68; transition: opacity .2s, background .2s; }
+.event-card.st-past .card-head { opacity: 0.72; transition: opacity .2s, background .2s; }
 .event-card.st-past .card-head:hover,
 .event-card.st-past.is-open .card-head { opacity: 1; }
 
 .event-card.st-past .card-title { color: var(--text-dim); }
-.event-card.st-past .card-buyin-amount { color: var(--text-dim); }
-
-.event-card.st-past .card-guarantee {
-  color: var(--text-faint);
-  background: none;
-  border-color: var(--border);
-}
 
 .card-head {
-  display: grid;
-  grid-template-columns: 130px 1fr auto 30px 24px;
-  align-items: center;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   text-align: left;
   background: none;
   border: none;
   color: inherit;
-  padding: 18px 20px;
   transition: background .2s;
 }
 
 .card-head:hover { background: var(--bg-card-hover); }
 
-.card-date {
+/* 上段: 左の状態パネル + 主情報 */
+.card-top {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding-right: 16px;
-  border-right: 1px solid var(--border);
+  align-items: stretch;
+  gap: 14px;
+  padding: 16px 18px 14px;
 }
 
-.card-date-text {
-  font-family: var(--font-display);
-  font-size: 15px;
+/* 左の状態パネル(受付中 / 進行中 / 終了) */
+.card-status {
+  flex: 0 0 auto;
+  width: 104px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 8px;
+}
+
+.card-status-kicker {
+  font-size: 9.5px;
   font-weight: 600;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.card-status-main {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.05;
   color: var(--text);
 }
 
-.card-flight {
-  font-size: 11px;
-  color: var(--text-faint);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+body[data-theme="wolf"] .card-status-main { font-style: italic; }
+
+.card-status-sub {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
 }
 
-.card-main { min-width: 0; }
+.card-status .live-flash {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 6px var(--live);
+  margin-right: 5px;
+  vertical-align: 1px;
+  animation: pulse 1.6s infinite;
+}
+
+.card-status.s-live .card-status-main { color: var(--live); }
+.card-status.s-open .card-status-main { color: var(--future); }
+.card-status.s-soon .card-status-main { color: var(--accent-bright); }
+.card-status.s-closed .card-status-main,
+.card-status.s-ended .card-status-main { color: var(--past); }
+
+/* 主情報(タイトル + 各種数値) */
+.card-core {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 .card-title-row {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
 }
 
 .card-title {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.45;
+  flex: 1 1 auto;
   min-width: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.22;
+  text-transform: uppercase;
+  color: var(--text);
   overflow-wrap: break-word;
 }
 
-.status-badge { margin-top: 3px; }
+body[data-theme="wolf"] .card-title { font-style: italic; }
 
-body[data-theme="utage"] .card-title { font-family: var(--font-mincho); letter-spacing: 0.03em; }
+body[data-theme="utage"] .card-title {
+  font-family: var(--font-mincho);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
 
-.status-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  padding: 3px 10px;
-  border-radius: 4px;
+.card-lines {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+}
+
+.card-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+}
+
+.card-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
   white-space: nowrap;
 }
 
-.badge-running {
-  background: rgba(var(--live-rgb), 0.14);
-  color: var(--live);
-  border: 1px solid rgba(var(--live-rgb), 0.45);
-  animation: badge-glow 2s infinite;
+.card-stat .k {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
-@keyframes badge-glow {
-  0%, 100% { box-shadow: 0 0 0 rgba(255, 77, 94, 0); }
-  50% { box-shadow: 0 0 10px rgba(var(--live-rgb), 0.4); }
+.card-stat .v {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
 }
 
-.badge-future {
-  background: rgba(var(--future-rgb), 0.12);
-  color: var(--future);
-  border: 1px solid rgba(var(--future-rgb), 0.4);
-}
-
-.badge-past {
-  background: rgba(var(--past-rgb), 0.12);
-  color: var(--past);
-  border: 1px solid rgba(var(--past-rgb), 0.35);
-}
-
-.card-sub-row {
+/* 下段: 3 セグメントのバー(参加者 / 種別 / 賞金) */
+.card-foot {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 8px;
-  margin-top: 7px;
-  font-size: 12px;
-  color: var(--text-dim);
+  gap: 8px;
+  padding: 0 18px 16px;
 }
 
-.event-tag {
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--text-dim);
+.card-seg {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: 8px;
+  padding: 8px 12px;
 }
 
-.card-live-info { color: var(--live); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
-.card-reg-info { color: var(--future); font-weight: 500; }
-.card-past-info { color: var(--text-faint); }
-
-.card-buyin {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  text-align: right;
+.card-seg .k {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
-.card-buyin-amount {
+.card-seg .v {
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 14px;
   font-weight: 700;
-  color: var(--accent-bright);
   letter-spacing: 0.02em;
-  line-height: 1.1;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-body[data-theme="wolf"] .card-buyin-amount { font-style: italic; }
-
-.card-buyin-note { font-size: 11px; color: var(--text-faint); }
-
-.card-guarantee {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
-  border: 1px solid rgba(var(--accent-rgb), 0.3);
-  padding: 2px 8px;
-  border-radius: 4px;
-  margin-top: 3px;
-}
-
-body[data-theme="utage"] .card-guarantee { color: var(--accent-bright); }
+.card-seg.seg-prize .v { color: var(--accent-bright); }
+body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 
 .card-chevron {
+  flex-shrink: 0;
+  margin-top: 3px;
   color: var(--text-faint);
-  font-size: 16px;
+  font-size: 15px;
+  line-height: 1;
   transition: transform .3s;
-  text-align: center;
 }
 
 /* お気に入り(★) */
 .fav-btn {
+  flex-shrink: 0;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1;
   color: var(--text-faint);
   cursor: pointer;
@@ -1154,12 +1229,79 @@ body[data-theme="utage"] .detail-notes-title { font-family: var(--font-mincho); 
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table tbody tr:hover { background: var(--row-hover); }
 
+/* 結果表・賞金表も横スクロールなしで画面幅に収める:
+ * 最小幅指定を外し、選手名の列だけ折り返す(数値列は nowrap のまま詰めて収める)。 */
+.data-table.results-table,
+.data-table.prize-table {
+  min-width: 0;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table.results-table th,
+.data-table.results-table td,
+.data-table.prize-table th,
+.data-table.prize-table td {
+  padding: 9px 8px;
+}
+
+.data-table.results-table th:first-child,
+.data-table.results-table td:first-child,
+.data-table.prize-table th:first-child,
+.data-table.prize-table td:first-child { padding-left: 12px; }
+
+.data-table.results-table th:last-child,
+.data-table.results-table td:last-child,
+.data-table.prize-table th:last-child,
+.data-table.prize-table td:last-child { padding-right: 12px; }
+
+/* 選手名は折り返し可(長い名前でも横スクロールさせない) */
+.results-table .col-player {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
 /* ---------- ストラクチャーパネル ---------- */
 
 .structure-meta {
   font-size: 12.5px;
   color: var(--text-dim);
   margin-bottom: 12px;
+}
+
+/* ストラクチャー表は横スワイプ無しで画面幅に収める:
+ * 最小幅指定を外し、数値列を右寄せ・詰めた余白にして 4 列を全幅に納める。 */
+.data-table.structure-table {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table.structure-table th,
+.data-table.structure-table td {
+  padding: 8px 6px;
+  white-space: nowrap;
+}
+
+.data-table.structure-table th:first-child,
+.data-table.structure-table td:first-child {
+  width: 3.2em;
+  padding-left: 12px;
+  text-align: center;
+}
+
+/* Blinds 列を主役に、Ante / Time は最小限の幅で右寄せ */
+.data-table.structure-table th:nth-child(2),
+.data-table.structure-table td:nth-child(2) { text-align: right; }
+.data-table.structure-table th:nth-child(3),
+.data-table.structure-table td:nth-child(3) { width: 4.4em; text-align: right; }
+.data-table.structure-table th:nth-child(4),
+.data-table.structure-table td:nth-child(4) {
+  width: 3.4em;
+  text-align: right;
+  padding-right: 12px;
 }
 
 .row-break td {
@@ -1172,15 +1314,22 @@ body[data-theme="utage"] .detail-notes-title { font-family: var(--font-mincho); 
 
 .row-latereg td { background: rgba(var(--live-rgb), 0.05); }
 
+/* レイトレジ終了は Lv 列に inline で入れず、全幅の注記行として表示 */
+.row-latereg-note td {
+  background: rgba(var(--live-rgb), 0.05);
+  padding: 2px 12px 7px;
+  text-align: center;
+}
+
 .latereg-tag {
-  font-size: 10px;
+  display: inline-block;
+  font-size: 9.5px;
   font-weight: 700;
+  letter-spacing: 0.04em;
   color: var(--live);
   border: 1px solid rgba(var(--live-rgb), 0.45);
   border-radius: 4px;
-  padding: 1px 6px;
-  margin-left: 8px;
-  vertical-align: 1px;
+  padding: 1px 8px;
 }
 
 /* ---------- 結果パネル ---------- */
@@ -1215,7 +1364,7 @@ body[data-theme="utage"] .detail-notes-title { font-family: var(--font-mincho); 
 
 body[data-theme="wolf"] .summary-value { font-style: italic; }
 
-.results-table .col-pos { width: 56px; text-align: center; font-weight: 700; }
+.results-table .col-pos { width: 2.8em; text-align: center; font-weight: 700; }
 
 .pos-medal {
   display: inline-grid;
@@ -1250,7 +1399,7 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 
 /* ---------- 賞金分配(Prize)パネル ---------- */
 
-.prize-table .col-pos { width: 56px; text-align: center; font-weight: 700; }
+.prize-table .col-pos { width: 2.8em; text-align: center; font-weight: 700; }
 .prize-table .col-prize { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.02em; }
 
 /* ---------- ライブ状況パネル ---------- */
@@ -1877,9 +2026,9 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
     margin-bottom: 14px;
   }
 
-  .month-nav { position: static; padding-right: 4px; gap: 0; }
-  .month-arrow { width: 26px; height: 36px; font-size: 18px; }
-  .month-label { font-size: 13px; padding: 8px 8px; gap: 5px; }
+  .month-nav { position: static; padding-right: 6px; gap: 0; }
+  .month-label { padding: 5px 8px; gap: 5px; }
+  .ml-month { font-size: 14px; }
 
   /* ピッカーは画面横いっぱいのドロップダウンに */
   .date-strip { position: relative; }
@@ -1897,68 +2046,48 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
     min-height: 44px;
   }
 
-  .date-cell { min-width: 44px; min-height: 52px; }
+  .date-cell { min-width: 0; min-height: 52px; }
   .date-num { font-size: 16px; width: 26px; height: 26px; }
 
-  /* 状況フィルタ: 横スクロール1行 */
-  .status-filter {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    margin-left: -14px;
-    margin-right: -14px;
-    padding: 0 14px 4px;
-    margin-bottom: 18px;
+  /* 状況フィルタ: 2 段構成・横スクロールなし。
+   * 各段のピルを均等幅で敷き詰めて画面幅に収める。 */
+  .status-filter { gap: 8px; margin-bottom: 18px; }
+
+  .status-row { flex-wrap: nowrap; gap: 6px; }
+
+  .status-row .status-pill {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 6px;
+    font-size: 12.5px;
   }
 
-  .status-filter::-webkit-scrollbar { display: none; }
+  /* カード: コンパクト表示 */
+  .card-top { padding: 13px 13px 12px; gap: 10px; }
 
-  /* カード: 縦積みレイアウト */
-  .card-head {
-    grid-template-columns: 1fr auto auto;
-    grid-template-areas:
-      'date star chevron'
-      'main main main'
-      'buyin buyin buyin';
-    gap: 8px;
-    padding: 14px;
+  .card-status { width: 86px; padding: 8px 6px; gap: 3px; }
+  .card-status-main { font-size: 15px; }
+  .card-status-kicker { font-size: 9px; }
+  .card-status-sub { font-size: 9.5px; }
+
+  .card-title { font-size: 15.5px; line-height: 1.25; }
+  .fav-btn { width: 30px; height: 30px; font-size: 17px; }
+
+  .card-lines { margin-top: 8px; }
+  .card-line { gap: 5px 16px; }
+  .card-stat .v { font-size: 13px; }
+
+  /* 下部バーは狭い画面でも横一列を維持(折り返さない)。
+   * セグメント内はラベル上・値下に積んで幅を詰める。 */
+  .card-foot { gap: 6px; padding: 0 13px 13px; }
+  .card-seg {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 7px 9px;
   }
-
-  .fav-btn { grid-area: star; width: 30px; height: 30px; font-size: 17px; }
-
-  .card-date {
-    grid-area: date;
-    flex-direction: row;
-    align-items: baseline;
-    gap: 10px;
-    border-right: none;
-    padding-right: 0;
-  }
-
-  .card-date-text { font-size: 14px; }
-
-  .card-main { grid-area: main; }
-
-  .card-title { font-size: 15.5px; line-height: 1.45; }
-
-  .card-sub-row { margin-top: 6px; }
-
-  .card-buyin {
-    grid-area: buyin;
-    flex-direction: row;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 8px 10px;
-    border-top: 1px dashed var(--border);
-    padding-top: 10px;
-  }
-
-  .card-buyin-amount { font-size: 20px; }
-
-  .card-guarantee { margin-top: 0; margin-left: auto; }
-
-  .card-chevron { grid-area: chevron; }
+  .card-seg .k { font-size: 8.5px; letter-spacing: 0.05em; }
+  .card-seg .v { font-size: 12px; }
 
   /* アコーディオン内 */
   .detail-tabs { padding: 0 8px; }
@@ -1996,6 +2125,6 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   body, .site-header, .category-tabs, .event-card { transition: none; }
   .card-body { transition: none; }
   .detail-panel.is-active { animation: none; }
-  .dot-live, .badge-running, .detail-tab[data-tab="live"]::before { animation: none; }
+  .dot-live, .card-status .live-flash, .detail-tab[data-tab="live"]::before { animation: none; }
   .card-chevron { transition: none; }
 }
