@@ -964,7 +964,9 @@
     if (!btn || btn.id === 'favFilter') return;
     state.status = btn.dataset.status;
     state.openedId = null;
-    document.querySelectorAll('.status-pill').forEach(function (t) {
+    /* 状態ピル(All / Live / Upcoming / Past)だけを排他トグル。
+     * お気に入り(favFilter)は data-status を持たないので対象外 → 選択が維持される。 */
+    document.querySelectorAll('.status-pill[data-status]').forEach(function (t) {
       t.classList.toggle('is-active', t === btn);
     });
     render();

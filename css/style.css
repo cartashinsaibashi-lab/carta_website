@@ -685,15 +685,17 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
-/* 上段(すべて/お気に入り) と 下段(開催状況) の 2 段 */
+/* 上段(すべて/お気に入り) と 下段(開催状況) の 2 段。
+ * 各ピルは横幅いっぱいに均等ストレッチし、上の日付行と幅を揃える。 */
 .status-row {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
 }
+
+.status-row .status-pill { flex: 1 1 0; min-width: 0; }
 
 .status-pill {
   display: flex;
@@ -715,9 +717,21 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
 .status-pill:hover { border-color: var(--border-strong); color: var(--text); }
 
 .status-pill.is-active {
-  background: rgba(var(--accent-rgb), 0.12);
+  background: rgba(var(--accent-rgb), 0.16);
   border-color: var(--accent);
   color: var(--accent-bright);
+  /* 選択中は淡い発光で状態を明確化(アクセント色に追従・全テーマ共通) */
+  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.35);
+}
+
+/* ウルフ: 淡いラベンダーが濃紺に埋もれがちなので、
+ * 発光・内側のにじみ・文字グローを強めて選択を分かりやすくする。 */
+body[data-theme="wolf"] .status-pill.is-active {
+  background: rgba(var(--accent-rgb), 0.22);
+  box-shadow:
+    0 0 16px 2px rgba(var(--accent-rgb), 0.5),
+    inset 0 0 12px rgba(var(--accent-rgb), 0.16);
+  text-shadow: 0 0 10px rgba(var(--accent-rgb), 0.5);
 }
 
 .dot {
@@ -1987,6 +2001,15 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
 
   .container { padding: 0 14px; }
 
+  /* フィルタバーの背景を画面端まで全幅に。全幅の子要素(タブ/日付/ステータス)と
+   * 背景の境目(月光グラデの覗き)が生じないようにする。padding で内側の位置は据え置き。 */
+  .filter-bar {
+    margin-left: -14px;
+    margin-right: -14px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
   .brand-mark { width: 32px; height: 32px; font-size: 18px; }
   .brand-name { font-size: 15.5px; }
 
@@ -2047,7 +2070,14 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
 
   /* 状況フィルタ: 2 段構成・横スクロールなし。
    * 各段のピルを均等幅で敷き詰めて画面幅に収める。 */
-  .status-filter { gap: 8px; margin-bottom: 14px; }
+  /* 日付バーと同じく画面端まで全幅にして、5 ボタンの幅を上の日付行と揃える */
+  .status-filter {
+    gap: 8px;
+    margin-bottom: 12px;
+    margin-left: -14px;
+    margin-right: -14px;
+    padding: 0 6px 10px 6px;
+  }
 
   .status-row { flex-wrap: nowrap; gap: 6px; }
 
