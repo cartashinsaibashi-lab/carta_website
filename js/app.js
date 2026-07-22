@@ -97,7 +97,6 @@
   function tabsFor(ev) {
     var tabs = [];
     if (ev.status === 'running') tabs.push({ key: 'live', label: 'Live' });
-    if (ev.status === 'future') tabs.push({ key: 'reg', label: 'Registration' });
     if (ev.status === 'past') tabs.push({ key: 'results', label: 'Results' });
     tabs.push({ key: 'info', label: 'Info' });
     tabs.push({ key: 'prize', label: 'Prize' });
@@ -238,41 +237,6 @@
     );
   }
 
-  function regPanel(ev) {
-    var reg = ev.registration;
-    var pct = reg.cap ? Math.min(100, Math.round((reg.entries / reg.cap) * 100)) : 0;
-    var stateCls = reg.state === 'open' ? 'reg-open' : reg.state === 'openSoon' ? 'reg-soon' : 'reg-closed';
-    /* 受付ステータス(本番の subscriptionStatus: opened | openSoon | closed)に応じた文言 */
-    var statusMsgCls = reg.state === 'open' ? 'msg-open' : reg.state === 'openSoon' ? 'msg-soon' : 'msg-closed';
-    var statusMsg = reg.state === 'open'
-      ? 'Registration is currently open.'
-      : reg.state === 'openSoon'
-        ? 'Registration for this event has not opened yet.'
-        : 'Registration for this event has closed.';
-    var options = reg.options.map(function (o) {
-      return (
-        '<div class="reg-option">' +
-        '<span class="reg-option-label">' + esc(o.label) + '</span>' +
-        '<span class="reg-option-chips">' + esc(o.chips) + '</span>' +
-        '<span class="reg-option-amount">' + yen(o.amount) + '</span>' +
-        '</div>'
-      );
-    }).join('');
-    return (
-      '<div class="reg-head">' +
-      '  <span class="reg-state ' + stateCls + '">' + esc(reg.stateLabel) + '</span>' +
-      '  <span class="reg-close">' + esc(reg.closesLabel) + '</span>' +
-      '</div>' +
-      '<div class="reg-progress">' +
-      '  <div class="reg-progress-label"><span>Entries ' + num(reg.entries) + '</span><span>Cap ' + num(reg.cap) + '</span></div>' +
-      '  <div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
-      '</div>' +
-      '<div class="reg-options">' + options + '</div>' +
-      '<p class="reg-note">' + esc(reg.note) + '</p>' +
-      '<p class="reg-status-msg ' + statusMsgCls + '">' + statusMsg + '</p>'
-    );
-  }
-
   /* 賞金分配(Prize)パネル — 開催中・受付中・終了の全大会に共通で表示。
    * 本番では GET /v1/event/{id}/payouts から確定した支払い構造を取得する。 */
   function prizePanel(ev) {
@@ -330,7 +294,6 @@
       case 'structure': return structurePanel(ev);
       case 'results': return resultsPanel(ev);
       case 'live': return livePanel(ev);
-      case 'reg': return regPanel(ev);
       case 'prize': return prizePanel(ev);
     }
     return '';

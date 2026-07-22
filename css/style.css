@@ -9,9 +9,10 @@
 :root {
   --radius: 12px;
   --header-h: 64px;
-  --font-display: 'Oswald', 'Noto Sans JP', sans-serif;
-  --font-mincho: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  /* フォントは Noto Sans JP に統一。display / mincho も同一スタックを指す。 */
   --font-body: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+  --font-display: var(--font-body);
+  --font-mincho: var(--font-body);
 }
 
 /* ---------- テーマ: その他(バーガンディ VIP) ---------- */
