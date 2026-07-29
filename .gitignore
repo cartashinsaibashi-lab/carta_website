@@ -1,2 +1,10 @@
 # Local Netlify folder
 .netlify
+
+# Node / Functions
+node_modules
+
+# Environment (secrets — never commit)
+.env
+.env.*
+!.env.example

@@ -1,0 +1,13 @@
+{
+  "name": "carta-website",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CARTA POKER SERIES tournament site (static frontend + Netlify Functions BFF for PokerLens API)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "netlify dev",
+    "check": "node --check netlify/functions/events.mjs && node --check netlify/functions/event.mjs"
+  }
+}

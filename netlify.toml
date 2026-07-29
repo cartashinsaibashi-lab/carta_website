@@ -1,0 +1,19 @@
+# Netlify 設定 — 静的サイト + PokerLens API 用 BFF(Functions v2)
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  # Node v18+ の native fetch を使うため追加依存なし。ESM(.mjs)で記述。
+  node_bundler = "esbuild"
+
+[dev]
+  publish = "."
+  functions = "netlify/functions"
+  # `netlify dev` はここで静的ファイルと /api/* Functions を同一オリジンで配信する
+  framework = "#static"
+
+# 補足:
+# - ルーティングは各 Function 内の `export const config = { path: "/api/..." }`(v2)で定義。
+#   そのため個別のリダイレクトは不要。
+# - 秘密鍵(POKERLENS_CLIENT_SECRET 等)は Netlify の環境変数に設定する(.env はローカル専用)。

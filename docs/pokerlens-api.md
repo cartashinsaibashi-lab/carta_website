@@ -171,7 +171,10 @@ WebSocket 等のプッシュ配信は standard 仕様には見当たらないた
 
 ## 未確認事項(ベンダー/運営に確認したい)
 
-1. 公開情報(イベント一覧・結果)の取得に認証・API キーが必要か
+1. ~~公開情報(イベント一覧・結果)の取得に認証・API キーが必要か~~
+   → **【確認済み・2026-07】必要**。`POST /v1/event/search` は認証なしだと `401`
+   (`Authorization has been denied`)。一覧表示だけでも `authenticate` でトークン取得が要る。
+   構成は [architecture.md](./architecture.md) を参照(BFF で匿名トークンを取得・キャッシュ)。
 2. 「ウルフ / 宴 / その他」の分類をどのフィールドで持たせるか(league / tags / gameType)
 3. 申込(エントリー)をサイトから直接行えるか(player API の consume/ticket 経由か、外部フォームか)
 4. ライブ状況のリアルタイム配信手段(ポーリング頻度の上限、`/v1/player/listen/{id}` の仕様)
