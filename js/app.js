@@ -105,6 +105,14 @@
     return p2(m) + ':' + p2(s);
   }
 
+  /* ライブのレベル残り秒。endsAt(絶対時刻)があれば現在時刻から算出して
+     取得ラグ/キャッシュ古さを自己補正、無ければスナップショット値を使う。 */
+  function remainSec(endsAt, fallback) {
+    return endsAt != null && isFinite(endsAt)
+      ? Math.max(0, Math.round((endsAt - Date.now()) / 1000))
+      : (fallback || 0);
+  }
+
   /* ---------- タブ定義 ---------- */
 
   function tabsFor(ev) {
@@ -248,7 +256,8 @@
       '    <div class="live-level">LEVEL ' + lv.levelIndex + '</div>' +
       '    <div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
       '      <span class="live-ante">ante ' + num(lv.ante) + '</span></div>' +
-      '    <div class="live-timer" data-timer data-remaining="' + lv.remainingSec + '">' + fmtSec(lv.remainingSec) + '</div>' +
+      '    <div class="live-timer" data-timer data-remaining="' + lv.remainingSec + '"' +
+      (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '') + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
       '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + '<br>Next break ' + esc(lv.nextBreak) + '</div>' +
       '  </div>' +
       '  <div class="live-stats">' +
@@ -1186,9 +1195,13 @@
 
   function startTimers() {
     listEl.querySelectorAll('[data-timer]').forEach(function (el) {
-      var remaining = parseInt(el.dataset.remaining, 10);
+      var endsAt = el.dataset.endsAt ? parseInt(el.dataset.endsAt, 10) : null;
+      var fallback = parseInt(el.dataset.remaining, 10) || 0;
+      var remaining = remainSec(endsAt, fallback);
+      el.textContent = fmtSec(remaining); // 初期表示も endsAt 基準に補正
       var t = setInterval(function () {
-        remaining = remaining > 0 ? remaining - 1 : 0;
+        // endsAt があれば毎秒「絶対時刻 - 現在」で再計算(ドリフト/古さを自己補正)
+        remaining = endsAt != null ? remainSec(endsAt, fallback) : (remaining > 0 ? remaining - 1 : 0);
         el.textContent = fmtSec(remaining);
         if (remaining === 0) {
           clearInterval(t);

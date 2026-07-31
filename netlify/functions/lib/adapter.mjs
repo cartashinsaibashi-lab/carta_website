@@ -149,6 +149,13 @@ function buildLive(ev, levels) {
   const levelMinutes = num(cur ? cur.minutes : ev.dailyDetails && ev.dailyDetails.levelMinutes) || num(st.levelMinutes);
   const remaining = Math.max(0, levelMinutes * 60 - elapsed);
 
+  // elapsedSeconds は st.date 時点のスナップショット。レベル終了の「絶対時刻」を渡し、
+  // クライアントが (endsAt - now) で毎秒計算すれば、取得ラグ / CDN キャッシュの古さ /
+  // カード展開までの時間に依存せず自己補正できる(スナップショットのまま表示すると
+  // その古さ分だけタイマーが遅れる = 残りが多く見える)。
+  const statusDateMs = Date.parse(st.date);
+  const endsAt = Number.isFinite(statusDateMs) ? statusDateMs + remaining * 1000 : null;
+
   // 現在位置より後の最初のレベル / 休憩
   let next = null, nextBreak = null;
   for (let i = pos + 1; i < arr.length; i++) {
@@ -163,6 +170,8 @@ function buildLive(ev, levels) {
     bb: cur ? num(cur.bigBlind) : 0,
     ante: cur ? num(cur.ante) : 0,
     remainingSec: remaining,
+    endsAt: endsAt, // レベル終了の絶対時刻(ms epoch)。クライアントが real-time 補正に使う
+
     nextLevel: next ? `SB ${num(next.smallBlind)} / BB ${num(next.bigBlind)}` : '',
     nextBreak: nextBreak ? `${num(nextBreak.minutes)} min break` : '',
     tables: num(ev.stats && ev.stats.totalTables),
