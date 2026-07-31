@@ -36,6 +36,20 @@ function weekday(y, mo, d) {
   return WEEKDAYS[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
 }
 
+// 会場ローカル(JST)の wall-clock ISO を「絶対時刻」文字列に変換する。
+// フロントのカウントダウン(STARTS IN / REG CLOSE IN)が視聴者の TZ に依存せず
+// 常に JST 基準で計算できるよう +09:00 を付与する。既にオフセット/Z があればそのまま。
+function jstInstant(iso) {
+  if (!iso) return '';
+  const s = String(iso);
+  return /[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + '+09:00';
+}
+
+// "HH:MM"(24時間・JST wall-clock)
+function timeLabel(parts) {
+  return parts ? `${parts.hour}:${String(parts.minute).padStart(2, '0')}` : '';
+}
+
 // "7/29 (Wed) 12:00" 形式。app.js の splitDateTime 正規表現が末尾 H:MM を要求する。
 function dateLabel(parts) {
   if (!parts) return '';
@@ -210,6 +224,7 @@ function baseEvent(ev, levels) {
   const sub = ev.subscription || {};
   const buyin = sub.buyin || {};
   const parts = parseParts(dd.startDate || (ev.status && ev.status.date));
+  const closeParts = parseParts(dd.subscriptionClose);
   const status = statusOf(ev);
   const lateRegLevel = sub.lateRegistrationLevel;
 
@@ -225,6 +240,10 @@ function baseEvent(ev, levels) {
     month: parts ? parts.month : 0,
     day: parts ? parts.day : 0,
     dateLabel: dateLabel(parts),
+    // カウントダウン用: 開始/レジクロの絶対時刻(JST基準)+ レジクロの表示時刻
+    startAt: jstInstant(dd.startDate || (ev.status && ev.status.date)),
+    regCloseAt: jstInstant(dd.subscriptionClose),
+    regCloseTime: timeLabel(closeParts),
     venue: (ev.venue && ev.venue.name) || '',
     buyin: num(buyin.buyin),
     fee: num(buyin.fee),
@@ -254,14 +273,34 @@ export function toListEvent(ev, { levels } = {}) {
   return out;
 }
 
-// 詳細用(アコーディオン内の structure / results / live をフルに埋める)
+// 進行中の座席情報 seats[](players から着席者を抽出)
+export function buildSeats(players) {
+  const arr = Array.isArray(players) ? players : (players && players.results) || [];
+  return arr
+    .filter((p) => !p.busted && p.seatIndex != null)
+    .map((p) => {
+      const pl = p.player || {};
+      return {
+        table: num(p.tableIndex),
+        seat: num(p.seatIndex),
+        player: pl.nickname || pl.preferredName || [pl.firstname, pl.lastname].filter(Boolean).join(' ') || '—',
+        chips: num(p.chipsCount),
+      };
+    })
+    .sort((a, b) => a.table - b.table || a.seat - b.seat);
+}
+
+// 詳細用(アコーディオン内の structure / results / live / seats をフルに埋める)
 export function toDetailEvent(ev, { levels, players } = {}) {
   const base = baseEvent(ev, levels);
   const lateRegLevel = base._lateRegLevel;
   delete base._lateRegLevel;
   const out = Object.assign({}, base);
   out.structure = buildStructure(levels, lateRegLevel);
-  if (base.status === 'running') out.live = buildLive(ev, levels);
+  if (base.status === 'running') {
+    out.live = buildLive(ev, levels);
+    out.seats = buildSeats(players); // 座席No + プレイヤー名
+  }
   if (base.status === 'future') out.registration = buildRegistration(ev);
   if (base.status === 'past') out.results = buildResults(players);
   return out;

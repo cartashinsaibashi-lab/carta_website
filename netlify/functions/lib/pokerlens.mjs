@@ -66,11 +66,42 @@ function tokenTtlMs() {
   return Math.max(5 * 60e3, n * per * 0.8);
 }
 
-async function getToken({ force = false } = {}) {
+// Netlify Blobs によるトークン永続化(インスタンス跨ぎ/コールドスタートで再認証を回避)。
+// Blobs が使えない環境(ローカル未リンク等)では null になり、メモリキャッシュのみで動く。
+const BLOB_KEY = 'session-token';
+let _store; // undefined=未試行 / null=利用不可 / object=store
+
+async function tokenStore() {
+  if (_store !== undefined) return _store;
+  try {
+    const { getStore } = await import('@netlify/blobs');
+    _store = getStore('pokerlens');
+  } catch {
+    _store = null;
+  }
+  return _store;
+}
+
+export async function getToken({ force = false } = {}) {
   const now = Date.now();
+  // 1) メモリ(warm インスタンス内)
   if (!force && tokenCache && tokenCache.expiresAt > now) return tokenCache.token;
+  // 2) Blobs(インスタンス跨ぎ)
+  if (!force) {
+    const store = await tokenStore();
+    if (store) {
+      try {
+        const rec = await store.get(BLOB_KEY, { type: 'json' });
+        if (rec && rec.expiresAt > now) { tokenCache = rec; return rec.token; }
+      } catch { /* 読めなければ再認証へ */ }
+    }
+  }
+  // 3) 認証して両方に保存
   const { token } = await fetchToken();
-  tokenCache = { token, expiresAt: now + tokenTtlMs() };
+  const rec = { token, expiresAt: now + tokenTtlMs() };
+  tokenCache = rec;
+  const store = await tokenStore();
+  if (store) { try { await store.setJSON(BLOB_KEY, rec); } catch { /* 保存失敗は無視 */ } }
   return token;
 }
 

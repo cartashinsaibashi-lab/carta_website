@@ -2,14 +2,19 @@
 
 import { PokerLensError } from './pokerlens.mjs';
 
-export function json(data, { status = 200, cacheSeconds = 0 } = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': cacheSeconds > 0 ? `public, max-age=${cacheSeconds}` : 'no-store',
-    },
-  });
+export function json(data, { status = 200, cacheSeconds = 0, swrSeconds = 0 } = {}) {
+  const headers = { 'Content-Type': 'application/json; charset=utf-8' };
+  if (cacheSeconds > 0) {
+    const swr = swrSeconds > 0 ? `, stale-while-revalidate=${swrSeconds}` : '';
+    // ブラウザ向け
+    headers['Cache-Control'] = `public, max-age=${cacheSeconds}${swr}`;
+    // Netlify CDN の耐久キャッシュ(最初の1人以外は CDN から即返す。stale を返しつつ裏で更新)
+    headers['Netlify-CDN-Cache-Control'] =
+      `public, s-maxage=${cacheSeconds}, stale-while-revalidate=${swrSeconds || cacheSeconds * 20}`;
+  } else {
+    headers['Cache-Control'] = 'no-store';
+  }
+  return new Response(JSON.stringify(data), { status, headers });
 }
 
 // ハンドラを包んでエラーを JSON に整形する

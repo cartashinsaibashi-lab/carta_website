@@ -29,13 +29,14 @@ export default async (_req, context) =>
       return json({ results: buildResults(players) }, { cacheSeconds: 60 });
     }
 
-    // フル詳細: structure は常に、results は past のときだけ取得
+    // フル詳細: structure は常に取得。players は past(結果)と running(座席)で取得。
+    const needPlayers = code === 'closed' || code === 'running';
     const [levels, players] = await Promise.all([
       plGet(`/v1/event/${id}/levels`).catch(() => null),
-      code === 'closed' ? plPost(`/v1/event/${id}/players`, {}).catch(() => null) : Promise.resolve(null),
+      needPlayers ? plPost(`/v1/event/${id}/players`, {}).catch(() => null) : Promise.resolve(null),
     ]);
 
-    // running は毎回鮮度が要るので短め、それ以外は長めにキャッシュ
+    // running は毎回鮮度が要るので短め、それ以外は長めにキャッシュ(stale-while-revalidate 付き)
     const cacheSeconds = code === 'running' ? 10 : 120;
-    return json(toDetailEvent(ev, { levels, players }), { cacheSeconds });
+    return json(toDetailEvent(ev, { levels, players }), { cacheSeconds, swrSeconds: cacheSeconds * 10 });
   });

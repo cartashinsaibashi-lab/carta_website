@@ -1,6 +1,9 @@
 # Local Netlify folder
 .netlify
 
+# Netlify dev が生成するローカル成果物(コミットしない)
+deno.lock
+
 # Node / Functions
 node_modules
 

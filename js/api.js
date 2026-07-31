@@ -7,8 +7,8 @@
  *   3) 準備が整ってから app.js を注入して起動する
  *
  * 取得に失敗した場合(バックエンド未接続・オフライン等)は、
- * data.js が定義済みのモック(MOCK_EVENTS / CALENDAR)をそのまま使う。
- * これにより「API 無しでも静的サイトとして動く」状態を保つ。
+ * ダミーデータは一切表示せず、空(0 件)+ エラーメッセージにフォールバックする。
+ *   __CARTA_DATA_SOURCE__ = 'api' | 'empty' | 'error'
  * ========================================================= */
 (function () {
   'use strict';
@@ -31,6 +31,31 @@
       .finally(function () { clearTimeout(timer); });
   }
 
+  // JST の「今日」(視聴者の TZ に依存しない)
+  function jstToday() {
+    try {
+      var fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+      });
+      var p = {};
+      fmt.formatToParts(new Date()).forEach(function (x) { p[x.type] = x.value; });
+      return { year: +p.year, month: +p.month, day: +p.day };
+    } catch (e) {
+      var d = new Date();
+      return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+    }
+  }
+
+  // app.js が起動時に必要とする最小限の空カレンダー(当月のみ)
+  function emptyCalendar() {
+    var t = jstToday();
+    return { months: [{ year: t.year, month: t.month }], today: t };
+  }
+
+  function validCalendar(cal) {
+    return cal && Array.isArray(cal.months) && cal.today ? cal : emptyCalendar();
+  }
+
   function boot() {
     fetchWithTimeout(API_ENDPOINT)
       .then(function (res) {
@@ -40,19 +65,21 @@
       .then(function (data) {
         if (data && Array.isArray(data.events) && data.events.length) {
           window.MOCK_EVENTS = data.events;
-          if (data.calendar && Array.isArray(data.calendar.months)) {
-            window.CALENDAR = data.calendar;
-          }
+          window.CALENDAR = validCalendar(data.calendar);
           window.__CARTA_DATA_SOURCE__ = 'api';
-          console.info('[carta] PokerLens BFF から ' + data.events.length + ' 件のイベントを取得');
         } else {
-          window.__CARTA_DATA_SOURCE__ = 'mock';
-          console.warn('[carta] API 応答が空/不正のためモックデータを使用');
+          // 正常応答だがイベント 0 件 → 空表示(ダミーは出さない)
+          window.MOCK_EVENTS = [];
+          window.CALENDAR = validCalendar(data && data.calendar);
+          window.__CARTA_DATA_SOURCE__ = 'empty';
         }
       })
       .catch(function (err) {
-        window.__CARTA_DATA_SOURCE__ = 'mock';
-        console.warn('[carta] /api/events 取得失敗のためモックデータを使用:', err && err.message);
+        // 取得失敗 → 空 + エラー表示(ダミーは出さない)
+        window.MOCK_EVENTS = [];
+        window.CALENDAR = emptyCalendar();
+        window.__CARTA_DATA_SOURCE__ = 'error';
+        console.warn('[carta] /api/events 取得失敗:', err && err.message);
       })
       .finally(injectApp);
   }

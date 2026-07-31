@@ -8,7 +8,7 @@
 
 :root {
   --radius: 12px;
-  --header-h: 56px;
+  --header-h: 70px;
   /* フォントは Noto Sans JP に統一。display / mincho も同一スタックを指す。 */
   --font-body: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
   --font-display: var(--font-body);
@@ -37,6 +37,8 @@ body[data-theme="other"] {
   --future: #4fce96; --future-rgb: 79, 206, 150;
   --future-deep: #339e70;
   --past: #a58a90;   --past-rgb: 165, 138, 144;
+  --startin: #8f9cff;   /* STARTS IN(開始前カウントダウン) */
+  --regclose: #ff9a52;  /* REG CLOSE IN(レジクロ前カウントダウン) */
   --cat-strip: #c9a24d;
   --header-bg: rgba(42, 15, 20, 0.92);
   --table-line: rgba(92, 37, 49, 0.55);
@@ -66,6 +68,8 @@ body[data-theme="wolf"] {
   --future: #4fd39a; --future-rgb: 79, 211, 154;
   --future-deep: #339e70;
   --past: #8a86b3;   --past-rgb: 138, 134, 179;
+  --startin: #97a0ff;
+  --regclose: #ff9a4d;
   --cat-strip: #cdd3ff;
   --header-bg: rgba(20, 17, 56, 0.92);
   --table-line: rgba(50, 44, 110, 0.55);
@@ -95,6 +99,8 @@ body[data-theme="utage"] {
   --future: #2e7d54; --future-rgb: 46, 125, 84;
   --future-deep: #1f5c3d;
   --past: #8a8272;   --past-rgb: 138, 130, 114;
+  --startin: #3f47b8;
+  --regclose: #c25e14;
   --cat-strip: #c73e2d;
   --header-bg: rgba(242, 238, 227, 0.92);
   --table-line: rgba(216, 208, 186, 0.7);
@@ -187,13 +193,14 @@ body[data-theme="utage"]::before {
   background: var(--header-bg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--border);
   transition: background-color .45s ease, border-color .45s ease;
 }
 
 .header-inner {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   height: var(--header-h);
 }
 
@@ -219,105 +226,92 @@ body[data-theme="utage"] .brand-mark { border-radius: 50%; }
 
 .brand-name {
   font-family: var(--font-display);
-  font-size: 16.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
 
-body[data-theme="utage"] .brand-name { font-family: var(--font-mincho); letter-spacing: 0.14em; }
 
 .brand-sub {
-  font-size: 10px;
+  font-size: 8px;
   color: var(--text-faint);
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-/* ---------- フィルタバー(種別タブ + 日付 + 状況フィルタをまとめて上部固定) ---------- */
+/* ---------- フォルダ本体(コンテンツ箱): ヘッダー右のロゴタブと繋がる ---------- */
+
+.content-panel {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-top: -1px;              /* ヘッダー下辺と地続きに */
+  padding: 16px 16px 44px;
+  transition: background-color .45s ease, border-color .45s ease;
+}
+
+/* ---------- フィルタバー(日付 + 状況フィルタ) ---------- */
 
 .filter-bar {
-  position: sticky;
-  top: var(--header-h);
-  z-index: 95;
-  background: var(--bg);
-  transition: background-color .45s ease;
+  background: none;
 }
 
 /* ---------- 大会種別タブ ---------- */
 
+/* カテゴリ = ヘッダー右のロゴタブ。選択タブが下のコンテンツ箱と繋がるフォルダタブ */
 .category-tabs {
   display: flex;
-  gap: 8px;
-  border-bottom: 2px solid var(--border);
-  background: var(--header-bg);
-  transition: background-color .45s ease, border-color .45s ease;
+  gap: 6px;
+  flex-shrink: 0;
+  align-self: stretch;         /* ヘッダー高さいっぱい */
+  align-items: flex-end;       /* タブを下辺(コンテンツ箱の上辺)に寄せる */
 }
 
 .category-tab {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 44px;
+  justify-content: flex-end;
+  min-width: 40px;
   background: none;
-  border: none;
-  color: var(--text-dim);
-  font-size: 16px;
-  font-weight: 700;
-  padding: 9px 22px 8px;
-  border-radius: 8px 8px 0 0;
-  transition: color .2s, background .2s;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 11px 11px 0 0;
+  padding: 5px 7px 6px;
+  opacity: 0.5;                 /* 未選択は薄く */
+  transition: opacity .2s, background .2s, border-color .2s;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.category-tab::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -2px;
-  height: 3px;
-  background: transparent;
-  border-radius: 2px;
-  transition: background .2s;
+.category-tab:hover { opacity: 0.85; }
+
+.category-tab.is-active {
+  opacity: 1;
+  background: var(--bg-elevated);        /* = コンテンツ箱の地色 → 繋がる */
+  border-color: var(--border);
+  margin-bottom: -1px;                   /* 箱の上辺を跨ぐ */
+  z-index: 101;
 }
 
-.category-tab:hover { color: var(--text); background: var(--row-hover); }
-
-.category-tab.is-active { color: var(--accent-bright); }
-.category-tab.is-active::after { background: var(--accent); }
-
-.category-tab[data-category="utage"] { font-family: var(--font-mincho); letter-spacing: 0.1em; }
-body[data-theme="wolf"] .category-tab[data-category="wolf"].is-active {
-  font-family: var(--font-display);
-  font-style: italic;
-  letter-spacing: 0.12em;
+/* 種別アイコン(ロゴ)。未選択は明暗固定の下地チップで視認性を確保。 */
+.category-tab-icon {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  display: block;
+  border-radius: 9px;
+  padding: 2px;
 }
+.category-tab[data-category="wolf"] .category-tab-icon,
+.category-tab[data-category="other"] .category-tab-icon { background: #17132f; }
+.category-tab[data-category="utage"] .category-tab-icon { background: #f2ebda; }
+/* 選択タブはコンテンツ箱と一体化(ロゴ下地は箱の地色に合わせて透過) */
+.category-tab.is-active .category-tab-icon { background: transparent; }
 
-.category-tab-icon { font-size: 18px; line-height: 1; }
-.icon-wolf { color: #8e9cf0; }
-.icon-utage { color: #c73e2d; }
-.icon-other { color: #c9a24d; }
-
-.category-tab-count {
-  font-size: 11px;
-  font-weight: 700;
-  font-family: var(--font-body);
-  font-style: normal;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 99px;
-  padding: 1px 8px;
-}
-
-.category-tab.is-active .category-tab-count {
-  background: rgba(var(--accent-rgb), 0.15);
-  border-color: rgba(var(--accent-rgb), 0.4);
-  color: var(--accent-bright);
-}
+.category-tab-count { display: none; }
 
 /* ---------- 日付セレクター ---------- */
 
@@ -329,7 +323,7 @@ body[data-theme="wolf"] .category-tab[data-category="wolf"].is-active {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 6px 8px;
+  padding: 2px 8px;
   transition: background-color .45s ease, border-color .45s ease;
 }
 
@@ -582,8 +576,8 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
   justify-content: center;
   gap: 1px;
   min-width: 0;
-  min-height: 46px;
-  padding: 4px 4px 3px;
+  min-height: 30px;
+  padding: 1px 4px;
   background: none;
   border: none;
   border-radius: 10px;
@@ -597,14 +591,14 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
 
 .date-num {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.2;
   color: var(--text);
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 21px;
+  height: 21px;
   border-radius: 50%;
 }
 
@@ -683,36 +677,44 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
 
 .status-filter {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 24px;
 }
 
-/* 上段(すべて/お気に入り) と 下段(開催状況) の 2 段。
- * 各ピルは横幅いっぱいに均等ストレッチし、上の日付行と幅を揃える。 */
+/* All / Favorites / Live / Upcoming / Past の5ボタンを横一列で均等配置
+ * (スマホでも折り返さない) */
 .status-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
 }
 
+/* All / Live / Open / Close は均等ストレッチ、Favorites(★)は右端で幅小(伸ばさない) */
 .status-row .status-pill { flex: 1 1 0; min-width: 0; }
+.status-row .fav-pill {
+  flex: 0 0 auto;
+  padding-left: 14px;
+  padding-right: 14px;
+  font-size: 15px;
+}
 
 .status-pill {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 38px;
+  gap: 6px;
+  min-height: 32px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   color: var(--text-dim);
   font-size: 13px;
   font-weight: 500;
-  padding: 7px 16px;
+  padding: 5px 8px;
   border-radius: 99px;
   transition: all .2s;
   white-space: nowrap;
+  overflow: hidden;
 }
+
+.status-pill .pill-label { overflow: hidden; text-overflow: ellipsis; }
 
 .status-pill:hover { border-color: var(--border-strong); color: var(--text); }
 
@@ -749,6 +751,50 @@ body[data-theme="wolf"] .status-pill.is-active {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- 初期ローディング(API取得完了まで全画面) ---------- */
+
+.app-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  transition: opacity .35s ease, visibility .35s ease;
+}
+
+body.app-ready .app-loading {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.loader-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+/* ---------- カード: 詳細取得中(展開前) ---------- */
+
+.event-card.is-loading .card-expand-toggle { color: var(--accent-bright); }
+.event-card.is-loading .card-expand-label::after { content: 'Loading…'; }
+.event-card.is-loading .card-chevron { display: none; }
+.event-card.is-loading .card-expand-toggle::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border: 2px solid rgba(var(--accent-rgb), 0.35);
+  border-top-color: var(--accent-bright);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
 }
 
 /* ---------- イベントカード ---------- */
@@ -824,91 +870,90 @@ body[data-theme="wolf"] .status-pill.is-active {
 
 .card-head:hover { background: var(--bg-card-hover); }
 
-/* 上段: 左の状態パネル + 主情報 */
-.card-top {
+/* カード下部の帯: 左に状態/カウントダウン、右に DETAILS トグル(上部バーは廃止) */
+.card-expand {
   display: flex;
-  align-items: stretch;
-  gap: 14px;
-  padding: 16px 18px 14px;
-}
-
-/* 左の状態パネル(受付中 / 進行中 / 終了) */
-.card-status {
-  flex: 0 0 auto;
-  width: 104px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: center;
-  gap: 4px;
-  text-align: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 14px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
   background: var(--bg-inset);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 8px;
-}
-
-.card-status-kicker {
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
-.card-status-main {
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  line-height: 1.05;
-  color: var(--text);
-}
-
-body[data-theme="wolf"] .card-status-main { font-style: italic; }
-
-.card-status-sub {
-  font-size: 10px;
-  letter-spacing: 0.02em;
   color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: color .2s, background .2s;
 }
 
-.card-status .live-flash {
+/* 右側の DETAILS / CLOSE トグル */
+.card-expand-toggle { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.card-expand-label::after { content: 'Details'; }
+.event-card.is-open .card-expand-label::after { content: 'Close'; }
+
+.card-head:hover .card-expand-toggle {
+  color: var(--accent-bright);
+}
+
+/* 左側の状態表示(ドット + ラベル + カウントダウン)。ホバーしてもフェーズ色を保つ */
+.card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+}
+.card-status-label { white-space: nowrap; }
+
+.live-flash {
   display: inline-block;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--live);
-  box-shadow: 0 0 6px var(--live);
-  margin-right: 5px;
-  vertical-align: 1px;
+  background: currentColor;          /* フェーズ色(LIVE=緑 / REG CLOSE=橙 / STARTS IN=青)に追従 */
+  box-shadow: 0 0 6px currentColor;
   animation: pulse 1.6s infinite;
 }
 
-.card-status.s-live .card-status-main { color: var(--live); }
-.card-status.s-open .card-status-main { color: var(--future); }
-.card-status.s-soon .card-status-main { color: var(--accent-bright); }
-.card-status.s-closed .card-status-main,
-.card-status.s-ended .card-status-main { color: var(--past); }
+/* フェーズ別の文字色 */
+.card-status.s-live { color: var(--live); }
+.card-status.s-open { color: var(--future); }
+.card-status.s-soon { color: var(--accent-bright); }
+.card-status.s-startin  { color: var(--startin); }
+.card-status.s-regclose { color: var(--regclose); }
+.card-status.s-closed,
+.card-status.s-ended { color: var(--past); }
 
-/* 主情報(タイトル + 各種数値) */
-.card-core {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+/* カウントダウン数字(STARTS IN / REG CLOSE IN)。フェーズ色で目立たせる */
+.card-countdown {
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: none;
 }
+.s-startin  .card-countdown { color: var(--startin); }
+.s-regclose .card-countdown { color: var(--regclose); }
 
-.card-title-row {
+/* No + タイトル */
+.card-headline {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
+  padding: 9px 14px 0;
 }
+.event-card.is-minimal .card-headline { padding: 8px 14px; }
 
-/* イベント No バッジ(タイトル左) */
+/* イベント No バッジ */
 .card-no {
   flex: 0 0 auto;
-  align-self: center;
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
@@ -925,33 +970,27 @@ body[data-theme="wolf"] .card-status-main { font-style: italic; }
   flex: 1 1 auto;
   min-width: 0;
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  line-height: 1.22;
+  line-height: 1.25;
   text-transform: uppercase;
   color: var(--text);
   overflow-wrap: break-word;
 }
 
-body[data-theme="wolf"] .card-title { font-style: italic; }
-
-body[data-theme="utage"] .card-title {
-  font-family: var(--font-mincho);
-  letter-spacing: 0.04em;
-  text-transform: none;
-}
-
+/* 情報行(Date / Start / Reg Close / Buy-in / Chips) */
 .card-lines {
   display: flex;
   flex-direction: column;
-  margin-top: 10px;
+  gap: 3px;
+  padding: 7px 14px 12px;
 }
 
 .card-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 22px;
+  gap: 4px 20px;
 }
 
 .card-stat {
@@ -963,7 +1002,7 @@ body[data-theme="utage"] .card-title {
 
 .card-stat .k {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -972,7 +1011,7 @@ body[data-theme="utage"] .card-title {
 .card-stat .v {
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.02em;
   color: var(--text);
 }
@@ -1021,9 +1060,8 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 
 .card-chevron {
   flex-shrink: 0;
-  margin-top: 3px;
-  color: var(--text-faint);
-  font-size: 15px;
+  color: inherit;
+  font-size: 13px;
   line-height: 1;
   transition: transform .3s;
 }
@@ -1067,7 +1105,8 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 }
 .fav-pill.is-active .fav-pill-star { color: var(--accent-bright); }
 
-.event-card.is-open .card-chevron { transform: rotate(180deg); color: var(--accent); }
+.event-card.is-open .card-chevron { transform: rotate(180deg); }
+.event-card.is-open .card-expand-toggle { color: var(--accent-bright); }
 
 /* ---------- アコーディオン ---------- */
 
@@ -1190,7 +1229,6 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   border-bottom: 1px solid var(--border);
 }
 
-body[data-theme="utage"] .detail-notes-title { font-family: var(--font-mincho); letter-spacing: 0.2em; }
 
 .detail-notes {
   list-style: none;
@@ -1519,6 +1557,56 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
   margin-top: 14px;
   font-size: 12px;
   color: var(--text-faint);
+}
+
+/* ライブ座席一覧(座席No + プレイヤー名) */
+.live-seats { margin-top: 16px; }
+
+.live-seats-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.seat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.seat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.seat-no {
+  flex: 0 0 auto;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-bright);
+  background: rgba(var(--accent-rgb), 0.12);
+  border-radius: 6px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.seat-name {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- 申込状況パネル ---------- */
@@ -2043,8 +2131,29 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
     min-height: 44px;
   }
 
-  .category-tab-icon { font-size: 16px; }
+  .category-tab-icon { width: 44px; height: 44px; }
   .category-tab-count { padding: 0 6px; font-size: 10px; }
+
+  /* スマホでは content-panel(フォルダ箱)とフォルダタブを無効化し、素の表示に戻す */
+  .content-panel {
+    background: none;
+    border: none;
+    border-radius: 0;
+    margin-top: 0;
+    padding: 0;
+  }
+  .category-tabs { align-items: center; }
+  .category-tab {
+    border: none;
+    border-radius: 0;
+    margin-bottom: 0;
+    padding: 3px 4px;
+  }
+  .category-tab.is-active { background: none; }
+  /* 選択ロゴの下地チップを戻す(透過解除) */
+  .category-tab.is-active[data-category="wolf"] .category-tab-icon,
+  .category-tab.is-active[data-category="other"] .category-tab-icon { background: #17132f; }
+  .category-tab.is-active[data-category="utage"] .category-tab-icon { background: #f2ebda; }
 
   /* 日付セレクター: 全幅・コンパクト */
   .date-strip {
@@ -2078,7 +2187,7 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
     min-height: 44px;
   }
 
-  .date-cell { min-width: 0; min-height: 46px; }
+  .date-cell { min-width: 0; min-height: 38px; }
   .date-num { font-size: 15px; width: 24px; height: 24px; }
 
   /* 状況フィルタ: 2 段構成・横スクロールなし。
@@ -2086,47 +2195,40 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   /* 日付バーと同じく画面端まで全幅にして、5 ボタンの幅を上の日付行と揃える */
   .status-filter {
     gap: 8px;
-    margin-bottom: 12px;
     margin-left: -14px;
     margin-right: -14px;
     padding: 0 6px 10px 6px;
   }
 
-  .status-row { flex-wrap: nowrap; gap: 6px; }
+  .status-row { flex-wrap: nowrap; gap: 5px; }
 
   .status-row .status-pill {
     flex: 1;
     min-width: 0;
-    padding: 8px 6px;
-    font-size: 12.5px;
+    padding: 8px 4px;
+    font-size: 12px;
+    gap: 4px;
+  }
+  /* Favorites(★)は狭画面でも幅小のまま右端に固定(他ラベルの省略を防ぐ) */
+  .status-row .fav-pill {
+    flex: 0 0 auto;
+    padding-left: 11px;
+    padding-right: 11px;
+    font-size: 14px;
   }
 
   /* カード: コンパクト表示 */
-  .card-top { padding: 13px 13px 12px; gap: 10px; }
-
-  .card-status { width: 86px; padding: 8px 6px; gap: 3px; }
-  .card-status-main { font-size: 15px; }
-  .card-status-kicker { font-size: 9px; }
-  .card-status-sub { font-size: 9.5px; }
-
-  .card-title { font-size: 15.5px; line-height: 1.25; }
+  .card-expand { padding: 5px 12px; gap: 8px; }
+  .card-status { font-size: 10.5px; letter-spacing: 0.06em; }
+  .card-countdown { font-size: 11.5px; }
+  .card-headline { padding: 8px 12px 0; }
+  .event-card.is-minimal .card-headline { padding: 7px 12px; }
+  .card-title { font-size: 15px; line-height: 1.25; }
   .fav-btn { width: 30px; height: 30px; font-size: 17px; }
 
-  .card-lines { margin-top: 8px; }
-  .card-line { gap: 5px 16px; }
+  .card-lines { padding: 6px 12px 11px; }
+  .card-line { gap: 4px 14px; }
   .card-stat .v { font-size: 13px; }
-
-  /* 下部バーは狭い画面でも横一列を維持(折り返さない)。
-   * セグメント内はラベル上・値下に積んで幅を詰める。 */
-  .card-foot { gap: 6px; padding: 0 13px 13px; }
-  .card-seg {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1px;
-    padding: 7px 9px;
-  }
-  .card-seg .k { font-size: 8.5px; letter-spacing: 0.05em; }
-  .card-seg .v { font-size: 12px; }
 
   /* アコーディオン内 */
   .detail-tabs { padding: 0 8px; }
@@ -2164,6 +2266,6 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   body, .site-header, .category-tabs, .event-card { transition: none; }
   .card-body { transition: none; }
   .detail-panel.is-active { animation: none; }
-  .dot-live, .card-status .live-flash, .detail-tab[data-tab="live"]::before { animation: none; }
+  .dot-live, .live-flash, .detail-tab[data-tab="live"]::before { animation: none; }
   .card-chevron { transition: none; }
 }

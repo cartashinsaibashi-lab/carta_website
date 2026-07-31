@@ -12,39 +12,42 @@
 </head>
 <body data-theme="wolf">
 
-  <!-- Header -->
+  <!-- 初期ローディング(API取得が完了して描画されるまで表示) -->
+  <div class="app-loading" id="appLoading">
+    <div class="loader-spinner"></div>
+  </div>
+
+  <!-- Header: 左にブランド / 右にカテゴリ(スートアイコン) -->
   <header class="site-header">
     <div class="container header-inner">
       <div class="brand">
-        <span class="brand-mark">♠</span>
         <div class="brand-text">
           <span class="brand-name">CARTA POKER SERIES</span>
           <span class="brand-sub">Official Tournament Schedule</span>
         </div>
       </div>
+      <nav class="category-tabs" id="categoryTabs" aria-label="Category">
+        <button class="category-tab is-active" data-category="wolf" title="Wolf" aria-label="Wolf">
+          <img class="category-tab-icon" src="assets/logo-wolf.png" alt="Wolf">
+          <span class="category-tab-count" data-count="wolf">0</span>
+        </button>
+        <button class="category-tab" data-category="utage" title="Utage" aria-label="Utage">
+          <img class="category-tab-icon" src="assets/logo-utage.png" alt="Utage">
+          <span class="category-tab-count" data-count="utage">0</span>
+        </button>
+        <button class="category-tab" data-category="other" title="Other" aria-label="Other">
+          <img class="category-tab-icon" src="assets/logo-other.png" alt="Other">
+          <span class="category-tab-count" data-count="other">0</span>
+        </button>
+      </nav>
     </div>
   </header>
 
   <main class="container">
+   <div class="content-panel">
 
-    <!-- Category tabs / date / status filter (sticks to top while scrolling) -->
+    <!-- Date / status filter (sticks to top while scrolling) -->
     <div class="filter-bar" id="filterBar">
-
-    <!-- Tournament category tabs -->
-    <nav class="category-tabs" id="categoryTabs" aria-label="Category">
-      <button class="category-tab is-active" data-category="wolf">
-        <span class="category-tab-icon icon-wolf">♠</span>Wolf
-        <span class="category-tab-count" data-count="wolf">0</span>
-      </button>
-      <button class="category-tab" data-category="utage">
-        <span class="category-tab-icon icon-utage">♥</span>Utage
-        <span class="category-tab-count" data-count="utage">0</span>
-      </button>
-      <button class="category-tab" data-category="other">
-        <span class="category-tab-icon icon-other">♦</span>Other
-        <span class="category-tab-count" data-count="other">0</span>
-      </button>
-    </nav>
 
     <!-- Date selector -->
     <div class="date-strip" aria-label="Filter by date">
@@ -55,16 +58,14 @@
       <div class="date-strip-scroll" id="dateStrip"></div>
     </div>
 
-    <!-- Status filter (2 段構成: 上=すべて/お気に入り, 下=開催状況) -->
+    <!-- Status filter (5ボタン横一列: すべて/お気に入り/開催状況) -->
     <div class="status-filter" id="statusFilter" aria-label="Status filter">
-      <div class="status-row status-row-top">
-        <button class="status-pill is-active" data-status="all">All</button>
-        <button class="status-pill fav-pill" id="favFilter" type="button"><span class="fav-pill-star">★</span>Favorites</button>
-      </div>
-      <div class="status-row status-row-status">
-        <button class="status-pill" data-status="running"><span class="dot dot-live"></span>Live</button>
-        <button class="status-pill" data-status="future"><span class="dot dot-future"></span>Upcoming</button>
-        <button class="status-pill" data-status="past"><span class="dot dot-past"></span>Past</button>
+      <div class="status-row">
+        <button class="status-pill is-active" data-status="all"><span class="pill-label">All</span></button>
+        <button class="status-pill" data-status="running"><span class="dot dot-live"></span><span class="pill-label">Live</span></button>
+        <button class="status-pill" data-status="future"><span class="dot dot-future"></span><span class="pill-label">Open</span></button>
+        <button class="status-pill" data-status="past"><span class="dot dot-past"></span><span class="pill-label">Close</span></button>
+        <button class="status-pill fav-pill" id="favFilter" type="button" title="Favorites" aria-label="Favorites"><span class="fav-pill-star">★</span></button>
       </div>
     </div>
 
@@ -73,12 +74,13 @@
     <!-- Event list (cards + accordion) -->
     <section class="event-list" id="eventList"></section>
 
-    <p class="empty-message" id="emptyMessage" hidden>No tournaments found.</p>
+    <p class="empty-message" id="emptyMessage" hidden>No tournaments available right now.</p>
+   </div><!-- /.content-panel -->
   </main>
 
   <footer class="site-footer">
     <div class="container">
-      <p>© 2026 CARTA POKER SERIES — This page is a design mock. All data shown is dummy data.</p>
+      <p>© 2026 CARTA POKER SERIES. All rights reserved.</p>
     </div>
   </footer>
 
@@ -87,9 +89,8 @@
     <div class="modal" id="modalBox" role="dialog" aria-modal="true" aria-label="Tournament Entry"></div>
   </div>
 
-  <!-- data.js = API 未接続時のフォールバック用モック。api.js が /api/events を取得して
-       グローバル(MOCK_EVENTS / CALENDAR)を差し替えてから app.js を注入する。 -->
-  <script src="js/data.js"></script>
+  <!-- api.js が /api/events を取得してグローバル(MOCK_EVENTS / CALENDAR)を用意し、
+       app.js を注入して起動する。取得失敗時はダミーを出さず空/エラー表示にフォールバックする。 -->
   <script src="js/api.js"></script>
 </body>
 </html>

@@ -1,0 +1,42 @@
+// プリウォーム(スケジュール関数): 定期的に走らせて
+//   1) 認証トークンを温める(Blobs に有効なトークンを確保 → 実リクエストは認証を省ける)
+//   2) /api/events の CDN キャッシュを新鮮に保つ(2人目以降が常に即時)
+// を行う。Netlify の cron で自動実行される(HTTP パスは持たない)。
+
+import { getToken } from './lib/pokerlens.mjs';
+import { config as appConfig } from './lib/config.mjs';
+
+export const config = { schedule: '*/10 * * * *' }; // 10 分ごと
+
+export default async () => {
+  if (appConfig.isMock) {
+    return new Response(JSON.stringify({ ok: true, skipped: 'mock' }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const results = [];
+
+  // 1) トークンを確保(有効ならそのまま、失効間近なら再認証して Blobs 更新)
+  try {
+    await getToken();
+    results.push('token: ok');
+  } catch (e) {
+    results.push('token: ' + (e.message || 'error'));
+  }
+
+  // 2) /api/events を叩いて CDN キャッシュを温める(本番の公開 URL がある場合)
+  const base = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL;
+  if (base) {
+    try {
+      const r = await fetch(base + '/api/events', { headers: { 'x-prewarm': '1' } });
+      results.push('events: ' + r.status);
+    } catch (e) {
+      results.push('events: ' + (e.message || 'error'));
+    }
+  }
+
+  return new Response(JSON.stringify({ ok: true, results }), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+};

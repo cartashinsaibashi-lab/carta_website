@@ -28,9 +28,11 @@ export default async () =>
     const days = Number.isFinite(appConfig.historyDays) ? appConfig.historyDays : 120;
     const startDate = days > 0 ? isoDaysAgo(days) : undefined;
 
-    // 期間内を全ページ取得(pageIndex は 1 始まり)。安全のため最大 8 ページ(=800件)。
+    // 期間内をなるべく少ない往復で取得(pageSize を大きめにして通常1回で完了)。
+    // pageIndex は 1 始まり。安全のため最大 6 ページ(=3000件)を上限に。
+    const PAGE = 500;
     const results = [];
-    for (let pi = 1; pi <= 8; pi++) {
+    for (let pi = 1; pi <= 6; pi++) {
       const page = await plPost('/v1/event/search', {
         text: '',
         startDate,
@@ -38,16 +40,17 @@ export default async () =>
         includeFlights: true,
         orderBy: 'date',
         pageIndex: pi,
-        pageSize: 100,
+        pageSize: PAGE,
         gameTypeCategories: null,
         gameTypeLimits: null,
       });
       const rows = (page && page.results) || [];
       results.push(...rows);
-      if (rows.length < 100) break;
+      if (rows.length < PAGE) break;
     }
 
     const events = results.map((ev) => toListEvent(ev));
     const calendar = buildCalendar(events);
-    return json({ events, calendar }, { cacheSeconds: 30 });
+    // CDN 耐久キャッシュ: 30秒は新鮮、以降10分は stale を返しつつ裏で更新(2人目以降は即時)
+    return json({ events, calendar }, { cacheSeconds: 30, swrSeconds: 600 });
   });

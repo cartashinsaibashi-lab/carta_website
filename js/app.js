@@ -92,6 +92,19 @@
     return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
   }
 
+  /* カウントダウン表示。1日以上は "3d 04:00:00"、1時間以上は "9:46:01"、
+     それ未満は "56:01"(参照デザイン準拠) */
+  function fmtCountdown(ms) {
+    var s = Math.max(0, Math.floor(ms / 1000));
+    var d = Math.floor(s / 86400); s -= d * 86400;
+    var h = Math.floor(s / 3600); s -= h * 3600;
+    var m = Math.floor(s / 60); s -= m * 60;
+    var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    if (d > 0) return d + 'd ' + p2(h) + ':' + p2(m) + ':' + p2(s);
+    if (h > 0) return h + ':' + p2(m) + ':' + p2(s);
+    return p2(m) + ':' + p2(s);
+  }
+
   /* ---------- タブ定義 ---------- */
 
   function tabsFor(ev) {
@@ -186,7 +199,7 @@
       return (
         '<tr' + posCls + '>' +
         '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + r.pos + '</span></td>' +
-        '<td class="col-player">' + esc(r.player) + ' <span class="player-country">' + esc(r.country) + '</span></td>' +
+        '<td class="col-player">' + esc(r.player) + '</td>' +
         '<td class="col-prize">' + yen(r.prize) + '</td>' +
         (hasBounty ? '<td class="col-prize">' + (r.bounty ? yen(r.bounty) : '—') + '</td>' : '') +
         '</tr>'
@@ -216,6 +229,19 @@
 
   function livePanel(ev) {
     var lv = ev.live;
+    var seatsHtml = '';
+    if (ev.seats && ev.seats.length) {
+      seatsHtml =
+        '<div class="live-seats">' +
+        '<h4 class="live-seats-title">Seating (' + ev.seats.length + ')</h4>' +
+        '<div class="seat-grid">' +
+        ev.seats.map(function (s) {
+          return '<div class="seat-item">' +
+            '<span class="seat-no">T' + num(s.table) + ' · #' + num(s.seat) + '</span>' +
+            '<span class="seat-name">' + esc(s.player) + '</span></div>';
+        }).join('') +
+        '</div></div>';
+    }
     return (
       '<div class="live-board">' +
       '  <div class="live-clock">' +
@@ -234,6 +260,7 @@
       liveStat('Prize Pool', yen(ev.stats.prizePool)) +
       '  </div>' +
       '</div>' +
+      seatsHtml +
       '<p class="live-note"><span class="dot dot-live"></span>In production, live status is fetched from the PokerLens API at regular intervals and updates automatically.</p>'
     );
   }
@@ -324,25 +351,53 @@
     return m ? { date: m[1], time: m[2] } : { date: label || '', time: '' };
   }
 
-  /* 左の状態パネル(受付中 / 進行中 / 終了) */
-  function headStatus(ev) {
-    if (ev.status === 'running') {
-      return { cls: 's-live', kicker: 'In Progress', main: 'LIVE', sub: 'Lv.' + ev.live.levelIndex, dot: true };
-    }
-    if (ev.status === 'past') {
-      return { cls: 's-ended', kicker: 'Result', main: 'ENDED', sub: 'Final' };
-    }
+  var MONTH_MS = 30 * 24 * 3600 * 1000; // 「1ヶ月前」を30日で近似
+
+  /* 時刻ベースの3段階フェーズ(参照デザイン準拠)
+   *   開始1ヶ月前〜開始   : STARTS IN  <開始までのカウントダウン>
+   *   開始〜レジクロ       : REG CLOSE IN <レジクロまでのカウントダウン>
+   *   レジクロ後           : LIVE
+   * API が past を返したら最優先で CLOSED。target を持つ場合はカウントダウン表示。 */
+  function liveLvSub(ev) { return ev.live ? 'Lv.' + ev.live.levelIndex : 'In progress'; }
+
+  function futureOpenPhase(ev) {
     var st = ev.registration ? ev.registration.state : 'open';
-    if (st === 'openSoon') return { cls: 's-soon', kicker: 'Registration', main: 'SOON', sub: 'Opens soon' };
-    if (st === 'closed')   return { cls: 's-closed', kicker: 'Registration', main: 'CLOSED', sub: 'Full' };
-    return { cls: 's-open', kicker: 'Registration', main: 'OPEN', sub: 'Entry now' };
+    if (st === 'openSoon') return { cls: 's-soon', main: 'SOON', sub: 'Opens soon', dot: false, target: null };
+    if (st === 'closed')   return { cls: 's-closed', main: 'CLOSED', sub: 'Full', dot: false, target: null };
+    return { cls: 's-open', main: 'OPEN', sub: 'Entry now', dot: false, target: null };
   }
 
-  /* START 行の 2 列目(状態別)。進行中も Reg Close を表示(ブラインドはライブタブへ) */
+  function headStatus(ev, now) {
+    now = now || Date.now();
+    if (ev.status === 'past') return { cls: 's-ended', main: 'CLOSED', sub: 'Final', dot: false, target: null };
+
+    var start = ev.startAt ? Date.parse(ev.startAt) : NaN;
+    var regClose = ev.regCloseAt ? Date.parse(ev.regCloseAt) : NaN;
+
+    if (isFinite(start)) {
+      if (now < start) {
+        // 開始前: 1ヶ月以内ならカウントダウン、それより先は通常の OPEN 表示
+        if (now >= start - MONTH_MS) return { cls: 's-startin', main: 'STARTS IN', sub: '', dot: true, target: start };
+        return futureOpenPhase(ev);
+      }
+      // 開始済み: レジクロ前ならカウントダウン、後(または不明)なら LIVE
+      if (isFinite(regClose) && now < regClose) return { cls: 's-regclose', main: 'REG CLOSE IN', sub: '', dot: true, target: regClose };
+      return { cls: 's-live', main: 'LIVE', sub: liveLvSub(ev), dot: true, target: null };
+    }
+
+    // 開始時刻不明: 従来どおり API ステータスで判定
+    if (ev.status === 'running') return { cls: 's-live', main: 'LIVE', sub: liveLvSub(ev), dot: true, target: null };
+    return futureOpenPhase(ev);
+  }
+
+  /* START 行の 2 列目。参照デザイン: "Reg Close 17:00 (Lv.8)"(時刻 + レジクロレベル) */
   function headSecondStat(ev) {
     if (ev.status === 'past') return { k: 'Levels', v: ev.levelMinutes + '-min' };
     var m = /Lv\.?\s*(\d+)/i.exec(ev.lateReg || '');
-    return { k: 'Reg Close', v: m ? 'Lv.' + m[1] : ev.levelMinutes + '-min' };
+    var lv = m ? 'Lv.' + m[1] : '';
+    var t = ev.regCloseTime || '';
+    var v = t ? (t + (lv ? ' (' + lv + ')' : '')) : (lv || (ev.levelMinutes + '-min'));
+    return { k: 'Reg Close', v: v };
   }
 
   /* 下部バーの 3 セグメント(参加者 / 種別 / 賞金) */
@@ -394,30 +449,48 @@
     var sp = headStatus(ev);
     var dt = splitDateTime(ev.dateLabel);
     var sec = headSecondStat(ev);
+    var isPast = ev.status === 'past';
+
+    // カウントダウン(STARTS IN / REG CLOSE IN)は data-target を持つ span にして
+    // グローバルの ticker が毎秒更新・フェーズ遷移時に再描画する。
+    var cdHtml = sp.target
+      ? '<span class="card-countdown" data-target="' + sp.target + '">' + esc(fmtCountdown(sp.target - Date.now())) + '</span>'
+      : '';
+    // 下部バーに入れる状態表示: ドット + ラベル(LIVE / STARTS IN 等)+ カウントダウン
+    var statusHtml =
+      '<span class="card-status ' + sp.cls + '">' +
+      (sp.dot ? '<span class="live-flash"></span>' : '') +
+      '<span class="card-status-label">' + esc(sp.main) + '</span>' +
+      cdHtml +
+      '</span>';
+
+    var noBadge = ev.number ? '<span class="card-no">No.' + esc(String(ev.number)) + '</span>' : '';
+    var favBtn =
+      '<span class="fav-btn' + (fav ? ' is-fav' : '') + '" role="button" tabindex="0" data-fav="' + esc(ev.id) + '" ' +
+      'aria-label="Favorite" aria-pressed="' + fav + '" title="Add to favorites">' + (fav ? '★' : '☆') + '</span>';
+    /* 終了大会は情報行を省いて最小表示(細バー + No + 大会名のみ) */
+    var linesHtml = isPast ? '' : (
+      '    <div class="card-lines">' +
+      '      <div class="card-line">' + headStat('Date', dt.date) + headStat('Start', dt.time) + headStat(sec.k, sec.v) + '</div>' +
+      '      <div class="card-line">' + headStat('Buy-in', yen(ev.buyin + ev.fee)) + headStat('Chips', num(ev.startingStack)) + '</div>' +
+      '    </div>'
+    );
 
     return (
-      '<article id="event-' + esc(ev.id) + '" class="event-card st-' + esc(ev.status) + ' cat-' + esc(ev.category) + (opened ? ' is-open' : '') + '" data-id="' + esc(ev.id) + '">' +
+      '<article id="event-' + esc(ev.id) + '" class="event-card st-' + esc(ev.status) + ' cat-' + esc(ev.category) + (opened ? ' is-open' : '') + (isPast ? ' is-minimal' : '') + '" data-id="' + esc(ev.id) + '">' +
       '  <button class="card-head" type="button" aria-expanded="' + opened + '">' +
-      '    <div class="card-top">' +
-      '      <div class="card-status ' + sp.cls + '">' +
-      '        <span class="card-status-kicker">' + esc(sp.kicker) + '</span>' +
-      '        <span class="card-status-main">' + (sp.dot ? '<span class="live-flash"></span>' : '') + esc(sp.main) + '</span>' +
-      '        <span class="card-status-sub">' + esc(sp.sub) + '</span>' +
-      '      </div>' +
-      '      <div class="card-core">' +
-      '        <div class="card-title-row">' +
-      (ev.number ? '          <span class="card-no">No.' + esc(String(ev.number)) + '</span>' : '') +
-      '          <h2 class="card-title">' + esc(ev.name) + '</h2>' +
-      '          <span class="fav-btn' + (fav ? ' is-fav' : '') + '" role="button" tabindex="0" data-fav="' + esc(ev.id) + '" ' +
-      'aria-label="Favorite" aria-pressed="' + fav + '" title="Add to favorites">' + (fav ? '★' : '☆') + '</span>' +
-      '          <span class="card-chevron" aria-hidden="true">▾</span>' +
-      '        </div>' +
-      '        <div class="card-lines">' +
-      '          <div class="card-line">' + headStat('Date', dt.date) + '</div>' +
-      '          <div class="card-line">' + headStat('Start', dt.time) + headStat(sec.k, sec.v) + '</div>' +
-      '          <div class="card-line">' + headStat('Buy-in', yen(ev.buyin + ev.fee)) + headStat('Chips', num(ev.startingStack)) + '</div>' +
-      '        </div>' +
-      '      </div>' +
+      '    <div class="card-headline">' +
+      noBadge +
+      '      <h2 class="card-title">' + esc(ev.name) + '</h2>' +
+      favBtn +
+      '    </div>' +
+      linesHtml +
+      '    <div class="card-expand">' +
+      statusHtml +
+      '      <span class="card-expand-toggle">' +
+      '        <span class="card-expand-label"></span>' +
+      '        <span class="card-chevron" aria-hidden="true">▾</span>' +
+      '      </span>' +
       '    </div>' +
       '  </button>' +
       '  <div class="card-body">' +
@@ -434,6 +507,14 @@
 
   var STATUS_ORDER = { running: 0, future: 1, past: 2 };
 
+  /* 並び替え用の日時キー(年月日 + 開始時刻)。dateLabel 末尾の H:MM も反映。 */
+  function dateKey(ev) {
+    var hh = 0, mm = 0;
+    var m = /^(\d{1,2}):(\d{2})$/.exec(splitDateTime(ev.dateLabel).time);
+    if (m) { hh = +m[1]; mm = +m[2]; }
+    return ev.year * 100000000 + ev.month * 1000000 + ev.day * 10000 + hh * 100 + mm;
+  }
+
   function visibleEvents() {
     return MOCK_EVENTS
       .filter(function (ev) { return ev.category === state.category; })
@@ -447,8 +528,12 @@
         return true;
       })
       .sort(function (a, b) {
-        return (STATUS_ORDER[a.status] - STATUS_ORDER[b.status]) ||
-               ((a.year * 10000 + a.month * 100 + a.day) - (b.year * 10000 + b.month * 100 + b.day));
+        // まず Live → Open → Closed の順
+        var s = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+        if (s) return s;
+        // 同じ状態内: Live/Open は開催が近い順(昇順)、Closed は最近閉じた順(降順)
+        var ka = dateKey(a), kb = dateKey(b);
+        return a.status === 'past' ? (kb - ka) : (ka - kb);
       });
   }
 
@@ -460,7 +545,11 @@
     bindCards();
     startTimers();
     syncOpenParam();
+    prefetchVisibleDetails(); // 表示中カードの詳細をバックグラウンド先読み
   }
+
+  // 詳細の先読みは負荷抑制のため先頭 N 件に限定(全件は先読みしない)
+  var PREFETCH_LIMIT = 12;
 
   /* ---------- アコーディオンの URL 連携 & スクロール ----------
    * 開いているカードを ?event=<id> に反映し、開いたときは常に「固定バーの直下」へ
@@ -537,25 +626,50 @@
    * /api/events/:id からストラクチャー/結果/ライブ状況を取得してマージする。
    * モック(data.js フォールバック)時は詳細が既にインラインなので何もしない。 */
 
-  function maybeLoadDetail(id) {
-    if (window.__CARTA_DATA_SOURCE__ !== 'api') return;
+  /* 詳細を取得して ev にマージする。完了時(成功/失敗とも)に onDone を呼ぶ。
+   * モック時や取得済みのときは即座に onDone(取得しない)。 */
+  function maybeLoadDetail(id, onDone) {
     var ev = findEvent(id);
-    if (!ev || ev._detail) return; // 未取得のときだけ
+    var done = function () { if (onDone) onDone(); };
+    if (window.__CARTA_DATA_SOURCE__ !== 'api' || !ev || ev._detail === 'loaded') { done(); return; }
+    // 先読み中なら同じ取得の完了を待つ(押下時に空表示にならないように)
+    if (ev._detail === 'loading' && ev._detailPromise) { ev._detailPromise.then(done); return; }
     ev._detail = 'loading';
-    fetch('/api/events/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
+    ev._detailPromise = fetch('/api/events/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        if (!d || d.error) { ev._detail = null; return; }
-        if (d.structure) ev.structure = d.structure;
-        if (d.results) ev.results = d.results;
-        if (d.live) ev.live = d.live;
-        if (d.registration) ev.registration = d.registration;
-        if (d.stats) ev.stats = d.stats;
-        if (d.details) ev.details = d.details;
-        ev._detail = 'loaded';
-        if (state.openedId === id) render(); // 開いたままなら再描画して反映
+        if (d && !d.error) {
+          if (d.structure) ev.structure = d.structure;
+          if (d.results) ev.results = d.results;
+          if (d.live) ev.live = d.live;
+          if (d.seats) ev.seats = d.seats;
+          if (d.registration) ev.registration = d.registration;
+          if (d.stats) ev.stats = d.stats;
+          if (d.details) ev.details = d.details;
+          ev._detail = 'loaded';
+        } else {
+          ev._detail = null;
+        }
       })
       .catch(function () { ev._detail = null; });
+    ev._detailPromise.then(done);
+  }
+
+  /* 画面表示後、表示中カードの詳細をバックグラウンドで順番に先読みする。
+   * 押下時に取得済みなら即時展開できる。フィルタ変更で自動的にやり直す(古い先読みは中断)。 */
+  var prefetchRun = 0;
+  function prefetchVisibleDetails() {
+    if (window.__CARTA_DATA_SOURCE__ !== 'api') return;
+    var myRun = ++prefetchRun;
+    var list = visibleEvents().slice(0, PREFETCH_LIMIT);
+    var i = 0;
+    (function next() {
+      if (myRun !== prefetchRun) return;             // フィルタ変更等で中断
+      if (i >= list.length) return;
+      var ev = list[i++];
+      if (!ev || ev._detail === 'loaded') { next(); return; } // 取得済みはスキップ
+      maybeLoadDetail(ev.id, function () { setTimeout(next, 150); }); // API に優しい間隔で次へ
+    })();
   }
 
   /* ---------- ライブ状況のポーリング(進行中カードを開いている間だけ) ----------
@@ -571,6 +685,7 @@
     if (!d || d.error) return false;
     if (d.status && d.status !== ev.status) ev.status = d.status;
     if (d.live) ev.live = d.live;
+    if (d.seats) ev.seats = d.seats;
     if (d.stats) ev.stats = d.stats;
     if (d.structure) ev.structure = d.structure;
     if (d.results) ev.results = d.results;
@@ -621,6 +736,24 @@
     livePollId = null;
   }
 
+  /* カードの開閉状態を DOM に反映(再描画なし・閉じる用) */
+  function applyOpenState() {
+    listEl.querySelectorAll('.event-card').forEach(function (c) {
+      var open = c.dataset.id === state.openedId;
+      c.classList.toggle('is-open', open);
+      c.querySelector('.card-head').setAttribute('aria-expanded', open);
+    });
+  }
+
+  /* 詳細ロード完了後にカードを開く(全体再描画で詳細を反映してから展開) */
+  function openCard(id) {
+    state.openedId = id;
+    render();
+    startLivePolling(id);
+    var el = document.getElementById('event-' + id);
+    if (el) scrollToOpenCard(el);
+  }
+
   /* ---------- イベントバインド ---------- */
 
   function bindCards() {
@@ -628,22 +761,24 @@
       var head = card.querySelector('.card-head');
       head.addEventListener('click', function () {
         var id = card.dataset.id;
-        var willOpen = state.openedId !== id;
-        state.openedId = willOpen ? id : null;
-
-        listEl.querySelectorAll('.event-card').forEach(function (c) {
-          var open = c.dataset.id === state.openedId;
-          c.classList.toggle('is-open', open);
-          c.querySelector('.card-head').setAttribute('aria-expanded', open);
-        });
-
-        syncOpenParam();
-        if (willOpen) {
-          maybeLoadDetail(id);
-          startLivePolling(id); // 進行中カードなら内部でライブ更新を開始
-          scrollToOpenCard(card);
-        } else {
+        if (state.openedId === id) {
+          // 閉じる(即時)
+          state.openedId = null;
+          applyOpenState();
+          syncOpenParam();
           stopLivePolling();
+          return;
+        }
+        // 開く: API 接続時は詳細取得の完了を待ってから展開する
+        var ev = findEvent(id);
+        if (window.__CARTA_DATA_SOURCE__ === 'api' && ev && ev._detail !== 'loaded') {
+          card.classList.add('is-loading');
+          maybeLoadDetail(id, function () {
+            card.classList.remove('is-loading');
+            openCard(id);
+          });
+        } else {
+          openCard(id);
         }
       });
 
@@ -1039,6 +1174,27 @@
     timers = [];
   }
 
+  /* ---------- カウントダウン ticker(STARTS IN / REG CLOSE IN) ----------
+   * カード上部ステータスバーの .card-countdown を毎秒更新する。render() をまたいでも
+   * 生き続ける単一タイマーで、毎tick DOM を走査するため新カードにも自動追従する。
+   * カウントダウンが 0 を跨いだら render() でフェーズ(→ REG CLOSE IN → LIVE)を反映。 */
+  var countdownTimer = null;
+  function ensureCountdownTicker() {
+    if (countdownTimer) return;
+    countdownTimer = setInterval(function () {
+      var els = listEl.querySelectorAll('.card-countdown[data-target]');
+      if (!els.length) return;
+      var now = Date.now();
+      var flip = false;
+      els.forEach(function (el) {
+        var ms = (+el.getAttribute('data-target')) - now;
+        if (ms <= 0) flip = true;
+        el.textContent = fmtCountdown(ms);
+      });
+      if (flip) render(); // フェーズ遷移(開始 / レジクロ到達)を反映
+    }, 1000);
+  }
+
   /* ---------- 上部タブ / フィルタ ---------- */
 
   document.getElementById('categoryTabs').addEventListener('click', function (e) {
@@ -1080,12 +1236,24 @@
 
   applyOpenParam();               // ?event=<id> があれば該当カードを開いた状態で表示
   applyTheme(state.category);
+  // 取得失敗時は空表示 + 障害メッセージ(ダミーデータは出さない)
+  if (window.__CARTA_DATA_SOURCE__ === 'error' && emptyEl) {
+    emptyEl.textContent = 'Tournament data is temporarily unavailable. Please try again later.';
+  }
   updateCounts();
   renderMonthNav();
   renderDateStrip();
   render();
+  ensureCountdownTicker();         // STARTS IN / REG CLOSE IN のカウントダウン開始
   if (state.openedId) {
-    var initialCard = document.getElementById('event-' + state.openedId);
+    // ?event=<id> で自動展開した場合も詳細(結果/ストラクチャー/ライブ)を読み込み、完了後に反映
+    var openId = state.openedId;
+    maybeLoadDetail(openId, function () { if (state.openedId === openId) render(); });
+    startLivePolling(openId);
+    var initialCard = document.getElementById('event-' + openId);
     if (initialCard) scrollToOpenCard(initialCard);
   }
+
+  // 初期描画が完了したのでローディングを解除して画面を表示
+  document.body.classList.add('app-ready');
 })();
