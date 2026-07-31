@@ -505,8 +505,6 @@
 
   /* ---------- 描画 ---------- */
 
-  var STATUS_ORDER = { running: 0, future: 1, past: 2 };
-
   /* 並び替え用の日時キー(年月日 + 開始時刻)。dateLabel 末尾の H:MM も反映。 */
   function dateKey(ev) {
     var hh = 0, mm = 0;
@@ -528,19 +526,52 @@
         return true;
       })
       .sort(function (a, b) {
-        // まず Live → Open → Closed の順
-        var s = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
-        if (s) return s;
-        // 同じ状態内: Live/Open は開催が近い順(昇順)、Closed は最近閉じた順(降順)
+        // 日付優先の schedule 形式: 未来/ライブ(過去以外)を先、過去を末尾へ
+        var ap = a.status === 'past', bp = b.status === 'past';
+        if (ap !== bp) return ap ? 1 : -1;
+        // 未来/ライブ = 開催が近い順(昇順・今日→未来)、過去 = 最近閉じた順(降順)
         var ka = dateKey(a), kb = dateKey(b);
-        return a.status === 'past' ? (kb - ka) : (ka - kb);
+        return ap ? (kb - ka) : (ka - kb);
       });
+  }
+
+  var WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  /* 日付見出しラベル "07.31 Fri."(参照デザイン準拠) */
+  function dateHeaderLabel(ev) {
+    var wd = WEEKDAYS[new Date(Date.UTC(ev.year, ev.month - 1, ev.day)).getUTCDay()];
+    var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    return p2(ev.month) + '.' + p2(ev.day) + ' ' + wd + '.';
+  }
+
+  /* カード列を日付ごとに区切って HTML 化。日付が変わる位置に見出しを、
+     過去の先頭に Past 区切りを挿入する。見出しは .event-card ではないため
+     既存のカード走査(bindCards / タイマー / 先読み)には影響しない。 */
+  function listHtml(events) {
+    var out = '';
+    var curKey = null;
+    var pastStarted = false;
+    events.forEach(function (ev) {
+      if (ev.status === 'past' && !pastStarted) {
+        pastStarted = true;
+        curKey = null; // 過去の最初の日付でも見出しを出す
+        out += '<div class="past-divider"><span>Past</span></div>';
+      }
+      var k = ev.year + '-' + ev.month + '-' + ev.day;
+      if (k !== curKey) {
+        curKey = k;
+        out += '<div class="date-divider"><span class="date-divider-label">' +
+          esc(dateHeaderLabel(ev)) + '</span></div>';
+      }
+      out += cardHtml(ev);
+    });
+    return out;
   }
 
   function render() {
     clearTimers();
     var events = visibleEvents();
-    listEl.innerHTML = events.map(cardHtml).join('');
+    listEl.innerHTML = listHtml(events);
     emptyEl.hidden = events.length > 0;
     bindCards();
     startTimers();
