@@ -860,6 +860,7 @@ body.app-ready .app-loading {
 .card-head {
   display: flex;
   flex-direction: column;
+  align-items: stretch;   /* Safari は <button> の flex 子要素を stretch しないため明示 */
   width: 100%;
   text-align: left;
   background: none;
@@ -867,6 +868,10 @@ body.app-ready .app-loading {
   color: inherit;
   transition: background .2s;
 }
+
+/* iOS Safari 対策: button(flex column)配下の各行を確実に横幅いっぱいに。
+   これが無いと下部バーが内容幅で切れ、★も右端に寄らない。 */
+.card-head > * { width: 100%; }
 
 .card-head:hover { background: var(--bg-card-hover); }
 
