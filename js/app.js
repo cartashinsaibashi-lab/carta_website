@@ -409,26 +409,20 @@
     return { k: 'Reg Close', v: v };
   }
 
-  /* 下部バーの 3 セグメント(参加者 / 種別 / 賞金) */
-  function headSegments(ev) {
-    var players;
+  /* カード用 Players 表示("現在 / 総数")。
+     running = 残りプレイヤー / 総エントリー、future = 登録 / 定員。
+     総数が不明(0)のときは 1 数値のみ表示。 */
+  function playersStat(ev) {
+    var cur, max;
     if (ev.status === 'running') {
-      players = { k: 'Players', v: num(ev.stats.players) + ' / ' + num(ev.stats.entries) };
-    } else if (ev.status === 'future' && ev.registration) {
-      players = { k: 'Players', v: num(ev.registration.entries) + ' / ' + num(ev.registration.cap) };
+      cur = num(ev.stats.players); max = num(ev.stats.entries);
+    } else if (ev.registration) {
+      cur = num(ev.registration.entries); max = num(ev.registration.cap);
     } else {
-      players = { k: 'Entries', v: num(ev.stats.entries) };
+      cur = num(ev.stats.entries); max = 0;
     }
-    var type = { k: 'Type', v: gameShort(ev) + ' / ' + ev.flight };
-    var prize;
-    if (ev.status === 'past') {
-      prize = { k: 'Prize Pool', v: yen(ev.stats.prizePool), prize: true };
-    } else if (ev.guarantee) {
-      prize = { k: 'Prize GTD', v: yen(ev.guarantee), prize: true };
-    } else {
-      prize = { k: 'Prize', v: '—', prize: true };
-    }
-    return [players, type, prize];
+    // 定員が 1 以下(未設定/無制限)のときは総数を出さず現在数のみ
+    return { k: 'Players', v: max > 1 ? (cur + ' / ' + max) : String(cur) };
   }
 
   function headStat(k, v) {
@@ -458,6 +452,7 @@
     var sp = headStatus(ev);
     var dt = splitDateTime(ev.dateLabel);
     var sec = headSecondStat(ev);
+    var pl = playersStat(ev);
     var isPast = ev.status === 'past';
 
     // カウントダウン(STARTS IN / REG CLOSE IN)は data-target を持つ span にして
@@ -481,7 +476,7 @@
     var linesHtml = isPast ? '' : (
       '    <div class="card-lines">' +
       '      <div class="card-line">' + headStat('Date', dt.date) + headStat('Start', dt.time) + headStat(sec.k, sec.v) + '</div>' +
-      '      <div class="card-line">' + headStat('Buy-in', yen(ev.buyin + ev.fee)) + headStat('Chips', num(ev.startingStack)) + '</div>' +
+      '      <div class="card-line">' + headStat('Buy-in', yen(ev.buyin + ev.fee)) + headStat('Chips', num(ev.startingStack)) + headStat(pl.k, pl.v) + '</div>' +
       '    </div>'
     );
 
