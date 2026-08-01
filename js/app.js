@@ -254,10 +254,10 @@
       '<div class="live-board">' +
       '  <div class="live-clock">' +
       '    <div class="live-level">LEVEL ' + lv.levelIndex + '</div>' +
-      '    <div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
-      '      <span class="live-ante">ante ' + num(lv.ante) + '</span></div>' +
       '    <div class="live-timer" data-timer data-remaining="' + lv.remainingSec + '"' +
       (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '') + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
+      '    <div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
+      '      <span class="live-ante">ante ' + num(lv.ante) + '</span></div>' +
       '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + '<br>Next break ' + esc(lv.nextBreak) + '</div>' +
       '  </div>' +
       '  <div class="live-stats">' +
