@@ -39,17 +39,16 @@ function makeLevels(blinds, minutes, breakEvery, breakMinutes) {
   return rows;
 }
 
-const LEVELS_STANDARD = makeLevels(
-  [
-    [100, 200, 200], [200, 300, 300], [200, 400, 400], [300, 600, 600],
-    [400, 800, 800], [500, 1000, 1000], [1000, 1500, 1500], [1000, 2000, 2000],
-    [1500, 3000, 3000], [2000, 4000, 4000], [3000, 6000, 6000], [4000, 8000, 8000],
-    [5000, 10000, 10000], [10000, 15000, 15000],
-  ],
-  30,
-  4,
-  15
-);
+const BLINDS_STANDARD = [
+  [100, 200, 200], [200, 300, 300], [200, 400, 400], [300, 600, 600],
+  [400, 800, 800], [500, 1000, 1000], [1000, 1500, 1500], [1000, 2000, 2000],
+  [1500, 3000, 3000], [2000, 4000, 4000], [3000, 6000, 6000], [4000, 8000, 8000],
+  [5000, 10000, 10000], [10000, 15000, 15000],
+];
+
+const LEVELS_STANDARD = makeLevels(BLINDS_STANDARD, 30, 4, 15);
+// 20分レベルの大会用(サテライト / ウィークリー)。イベント側の levelMinutes と揃える
+const LEVELS_TURBO = makeLevels(BLINDS_STANDARD, 20, 4, 10);
 
 // 一つの buyin バリアント
 function buyin(amount, fee, chips, description) {
@@ -94,6 +93,23 @@ function makePlayers(n) {
       },
     };
   });
+}
+
+// GET /v1/event/{id}/payouts のレスポンス([{ position, percentage, amount, description, ... }])。
+// description は現物賞品の表記("4 Tickets" 等)で、現金のみの大会では空文字。
+function makePayouts(rows) {
+  return rows.map(([position, percentage, amount, description]) => ({
+    position,
+    percentage,
+    amount,
+    payoutAmount: amount,
+    payoutDeal: null,
+    bountyAmount: null,
+    ticketAmount: null,
+    ticketCount: null,
+    description: description || '',
+    winner: null,
+  }));
 }
 
 // VenueEvent 本体
@@ -235,12 +251,32 @@ const LEVELS_BY_ID = {
     40, 4, 15
   ),
   'evt-utage-deep': LEVELS_STANDARD,
-  'evt-wolf-sat': LEVELS_STANDARD,
-  'evt-weekly-bounty': LEVELS_STANDARD,
+  'evt-wolf-sat': LEVELS_TURBO,
+  'evt-weekly-bounty': LEVELS_TURBO,
 };
 
 const PLAYERS_BY_ID = {
   'evt-weekly-bounty': makePlayers(10),
+};
+
+const PAYOUTS_BY_ID = {
+  // 通常の賞金大会(percentage あり / description なし)
+  'evt-wolf-main': makePayouts([
+    [1, 24, 1526400], [2, 15, 954000], [3, 10.5, 667800], [4, 7.8, 496080],
+    [5, 6, 381600], [6, 4.6, 292560], [7, 3.6, 228960], [8, 2.8, 178080],
+    [9, 2.2, 139920],
+  ]),
+  // サテライト(percentage 0 / description にチケット枚数)
+  'evt-wolf-sat': makePayouts([
+    [1, 0, 40000, '4 Tickets'], [2, 0, 40000, '4 Tickets'],
+    [3, 0, 30000, '3 Tickets'], [4, 0, 30000, '3 Tickets'],
+    [5, 0, 20000, '2 Tickets'], [6, 0, 20000, '2 Tickets'],
+  ]),
+  'evt-weekly-bounty': makePayouts([
+    [1, 38.7, 928800], [2, 25.8, 619200], [3, 16.1, 386400],
+    [4, 11.3, 271200], [5, 8.1, 194400],
+  ]),
+  // 未設定の大会(payouts が空 = まだ組んでいない)は evt-utage-deep で再現
 };
 
 function findEvent(id) {
@@ -281,10 +317,11 @@ export function mockRequest(method, path, body) {
     if (part === 'levels') return LEVELS_BY_ID[id] || [];
     if (part === 'players') return PLAYERS_BY_ID[id] || [];
     if (part === 'structure') return LEVELS_BY_ID[id] || [];
+    if (part === 'payouts') return PAYOUTS_BY_ID[id] || [];
   }
 
   // 未対応 path はエラーにせず空で返す(開発中の握りつぶし)
   return null;
 }
 
-export const _fixtures = { EVENTS, LEVELS_BY_ID, PLAYERS_BY_ID };
+export const _fixtures = { EVENTS, LEVELS_BY_ID, PLAYERS_BY_ID, PAYOUTS_BY_ID };

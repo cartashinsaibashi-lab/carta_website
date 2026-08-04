@@ -127,14 +127,22 @@
 
   /* ---------- 各パネルの HTML ---------- */
 
+  /* Level Length。API の levelMinutes が空でも、ストラクチャーの Lv.1 から拾う。 */
+  function levelMinutesOf(ev) {
+    if (ev.levelMinutes) return ev.levelMinutes;
+    var first = (ev.structure || []).find(function (r) { return r.type === 'level'; });
+    return first ? first.minutes : 0;
+  }
+
   function infoPanel(ev) {
+    var mins = levelMinutesOf(ev);
     var rows = [
       ['Date & Time', ev.dateLabel + ' Start'],
       ['Venue', ev.venue],
       ['Buy-in', yen(ev.buyin) + ' + ' + yen(ev.fee) + ' (total ' + yen(ev.buyin + ev.fee) + ')'],
       ['Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None'],
       ['Starting Stack', num(ev.startingStack) + ' chips'],
-      ['Level Length', ev.levelMinutes + ' min'],
+      ['Level Length', mins ? mins + ' min' : '—'],
       ['Late Reg', ev.lateReg],
       ['Re-entry', ev.reentry],
       ['Game', ev.gameType]
@@ -284,37 +292,11 @@
   }
 
   /* 賞金分配(Prize)パネル — 開催中・受付中・終了の全大会に共通で表示。
-   * 本番では GET /v1/event/{id}/payouts から確定した支払い構造を取得する。 */
+   * GET /v1/event/{id}/payouts の確定ペイアウトを優先し、未設定の大会だけ
+   * 標準配分モデルにフォールバックする。 */
   function prizePanel(ev) {
     var pool = ev.stats.prizePool || ev.guarantee || 0;   // 受付中は保証賞金を基準に表示
     var poolKnown = pool > 0;
-
-    /* 上位入賞の分配率(モック用の標準配分モデル) */
-    var payouts = [
-      [1, 0.240], [2, 0.150], [3, 0.105], [4, 0.078], [5, 0.060],
-      [6, 0.046], [7, 0.036], [8, 0.028], [9, 0.022]
-    ];
-    var restPct = 0.235;   // 10 位以降の合計
-
-    function pctLabel(v) { return (v * 100).toFixed(1).replace(/\.0$/, '') + '%'; }
-    function prizeCell(v) { return poolKnown ? yen(Math.round(pool * v / 1000) * 1000) : '—'; }
-
-    var rows = payouts.map(function (p) {
-      var posCls = p[0] === 1 ? ' class="row-winner"' : '';
-      var medalCls = p[0] <= 3 ? ' pos-' + p[0] : '';
-      return (
-        '<tr' + posCls + '>' +
-        '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + p[0] + '</span></td>' +
-        '<td>' + pctLabel(p[1]) + '</td>' +
-        '<td class="col-prize">' + prizeCell(p[1]) + '</td>' +
-        '</tr>'
-      );
-    }).join('');
-    rows +=
-      '<tr><td class="col-pos">10+</td>' +
-      '<td>' + pctLabel(restPct) + '</td>' +
-      '<td class="col-prize">' + prizeCell(restPct) + '</td></tr>';
-
     var poolLabel = ev.status === 'future' ? 'Guaranteed Prize Pool' : 'Prize Pool';
     var summary =
       '<div class="result-summary">' +
@@ -323,16 +305,85 @@
       summaryItem('In the Money', ev.stats.itm > 0 ? ev.stats.itm + ' players' : 'TBD') +
       '</div>';
 
+    var table = (ev.payouts && ev.payouts.length)
+      ? payoutTable(ev.payouts)
+      : modelPayoutTable(pool, poolKnown);
+
+    return summary + '<h3 class="detail-notes-title">Payout</h3>' + table;
+  }
+
+  /* 順位セル。上位 3 位はメダル表示 */
+  function placeCell(row) {
+    if (row.pos <= 3) {
+      return '<td class="col-pos"><span class="pos-medal pos-' + row.pos + '">' + row.pos + '</span></td>';
+    }
+    return '<td class="col-pos">' + row.pos + '</td>';
+  }
+
+  /* 確定ペイアウト表。
+   * Prize 列は description(現物賞品: "4 Tickets" / "1E × 2,000P")を主表示にし、
+   * 金額があれば併記する。description が無い大会は従来どおり金額のみ。
+   * Share 列は配分率を持つ大会だけ出す(サテライトは percentage=0 のため列ごと省く)。 */
+  function payoutTable(payouts) {
+    var hasShare = payouts.some(function (p) { return p.pct > 0; });
+
+    var rows = payouts.map(function (p) {
+      var posCls = p.pos === 1 ? ' class="row-winner"' : '';
+      var prize = p.description
+        ? esc(p.description) + (p.amount ? ' <span class="prize-sub">' + yen(p.amount) + '</span>' : '')
+        : (p.amount ? yen(p.amount) : '—');
+      return (
+        '<tr' + posCls + '>' +
+        placeCell(p) +
+        (hasShare ? '<td>' + (p.pct > 0 ? pctLabel(p.pct) : '—') + '</td>' : '') +
+        '<td class="col-prize">' + prize + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
     return (
-      summary +
-      '<h3 class="detail-notes-title">Payout</h3>' +
+      '<div class="table-scroll"><table class="data-table prize-table">' +
+      '<thead><tr><th>Place</th>' + (hasShare ? '<th>Share</th>' : '') + '<th>Prize</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '</table></div>'
+    );
+  }
+
+  /* ペイアウト未設定(payouts が空)の大会向けの標準配分モデル */
+  function modelPayoutTable(pool, poolKnown) {
+    var model = [
+      [1, 0.240], [2, 0.150], [3, 0.105], [4, 0.078], [5, 0.060],
+      [6, 0.046], [7, 0.036], [8, 0.028], [9, 0.022]
+    ];
+    var restPct = 0.235;   // 10 位以降の合計
+    function prizeCell(v) { return poolKnown ? yen(Math.round(pool * v / 1000) * 1000) : '—'; }
+
+    var rows = model.map(function (p) {
+      var posCls = p[0] === 1 ? ' class="row-winner"' : '';
+      var medalCls = p[0] <= 3 ? ' pos-' + p[0] : '';
+      return (
+        '<tr' + posCls + '>' +
+        '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + p[0] + '</span></td>' +
+        '<td>' + pctLabel(p[1] * 100) + '</td>' +
+        '<td class="col-prize">' + prizeCell(p[1]) + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+    rows +=
+      '<tr><td class="col-pos">10+</td>' +
+      '<td>' + pctLabel(restPct * 100) + '</td>' +
+      '<td class="col-prize">' + prizeCell(restPct) + '</td></tr>';
+
+    return (
       '<div class="table-scroll"><table class="data-table prize-table">' +
       '<thead><tr><th>Place</th><th>Share</th><th>Prize</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '</table></div>' +
-      '<p class="reg-note">* This is a mock payout model. The confirmed payout structure is fetched from the PokerLens API (GET /v1/event/{id}/payouts) in production.</p>'
+      '<p class="reg-note">* Estimated payout model. The confirmed structure appears here once payouts are set for this event.</p>'
     );
   }
+
+  function pctLabel(v) { return v.toFixed(1).replace(/\.0$/, '') + '%'; }
 
   function panelHtml(ev, key) {
     switch (key) {
@@ -401,11 +452,13 @@
 
   /* START 行の 2 列目。参照デザイン: "Reg Close 17:00 (Lv.8)"(時刻 + レジクロレベル) */
   function headSecondStat(ev) {
-    if (ev.status === 'past') return { k: 'Levels', v: ev.levelMinutes + '-min' };
+    var mins = levelMinutesOf(ev);
+    var minsLabel = mins ? mins + '-min' : '—';
+    if (ev.status === 'past') return { k: 'Levels', v: minsLabel };
     var m = /Lv\.?\s*(\d+)/i.exec(ev.lateReg || '');
     var lv = m ? 'Lv.' + m[1] : '';
     var t = ev.regCloseTime || '';
-    var v = t ? (t + (lv ? ' (' + lv + ')' : '')) : (lv || (ev.levelMinutes + '-min'));
+    var v = t ? (t + (lv ? ' (' + lv + ')' : '')) : (lv || minsLabel);
     return { k: 'Reg Close', v: v };
   }
 
@@ -681,6 +734,10 @@
           if (d.registration) ev.registration = d.registration;
           if (d.stats) ev.stats = d.stats;
           if (d.details) ev.details = d.details;
+          if (d.payouts) ev.payouts = d.payouts;
+          // 一覧では levels を取らないため levelMinutes が 0 のことがある。
+          // 詳細(= ストラクチャー Lv.1 由来)の値で上書きする。
+          if (d.levelMinutes) ev.levelMinutes = d.levelMinutes;
           ev._detail = 'loaded';
         } else {
           ev._detail = null;
@@ -725,6 +782,8 @@
     if (d.structure) ev.structure = d.structure;
     if (d.results) ev.results = d.results;
     if (d.registration) ev.registration = d.registration;
+    if (d.payouts) ev.payouts = d.payouts;
+    if (d.levelMinutes) ev.levelMinutes = d.levelMinutes;
     ev._detail = 'loaded';
     return true;
   }

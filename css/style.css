@@ -1526,6 +1526,13 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 .prize-table .col-pos { width: 2.8em; text-align: center; font-weight: 700; }
 .prize-table .col-prize { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.02em; }
 
+/* 現物賞品(payouts の description: "4 Tickets" 等)に併記する金額 */
+.prize-table .prize-sub {
+  font-weight: 400;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
 /* ---------- ライブ状況パネル ---------- */
 
 .live-board {

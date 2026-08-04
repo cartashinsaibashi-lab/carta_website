@@ -1,10 +1,10 @@
 // GET /api/events/:id            … アコーディオン詳細用のフル変換イベント(structure/results/live 込み)
-// GET /api/events/:id/:part      … 個別サブリソース(levels|players|live|structure)を生データ寄りで返す
+// GET /api/events/:id/:part      … 個別サブリソース(levels|players|payouts|structure)を生データ寄りで返す
 //
 // フロントはカード展開時に /api/events/:id を取得し、一覧のイベントにマージする。
 
 import { plGet, plPost } from './lib/pokerlens.mjs';
-import { toDetailEvent, buildStructure, buildResults } from './lib/adapter.mjs';
+import { toDetailEvent, buildStructure, buildResults, buildPayouts } from './lib/adapter.mjs';
 import { json, handle } from './lib/http.mjs';
 
 export const config = { path: ['/api/events/:id', '/api/events/:id/:part'] };
@@ -28,15 +28,20 @@ export default async (_req, context) =>
       const players = await plPost(`/v1/event/${id}/players`, {}).catch(() => null);
       return json({ results: buildResults(players) }, { cacheSeconds: 60 });
     }
+    if (part === 'payouts') {
+      const payouts = await plGet(`/v1/event/${id}/payouts`).catch(() => null);
+      return json({ payouts: buildPayouts(payouts) }, { cacheSeconds: 300 });
+    }
 
-    // フル詳細: structure は常に取得。players は past(結果)と running(座席)で取得。
+    // フル詳細: structure / payouts は常に取得。players は past(結果)と running(座席)で取得。
     const needPlayers = code === 'closed' || code === 'running';
-    const [levels, players] = await Promise.all([
+    const [levels, players, payouts] = await Promise.all([
       plGet(`/v1/event/${id}/levels`).catch(() => null),
       needPlayers ? plPost(`/v1/event/${id}/players`, {}).catch(() => null) : Promise.resolve(null),
+      plGet(`/v1/event/${id}/payouts`).catch(() => null),
     ]);
 
     // running は毎回鮮度が要るので短め、それ以外は長めにキャッシュ(stale-while-revalidate 付き)
     const cacheSeconds = code === 'running' ? 10 : 120;
-    return json(toDetailEvent(ev, { levels, players }), { cacheSeconds, swrSeconds: cacheSeconds * 10 });
+    return json(toDetailEvent(ev, { levels, players, payouts }), { cacheSeconds, swrSeconds: cacheSeconds * 10 });
   });

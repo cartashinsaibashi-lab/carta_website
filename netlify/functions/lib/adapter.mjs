@@ -121,6 +121,15 @@ export function buildStructure(levels, lateRegLevel) {
   return out;
 }
 
+// levels[] の最初のレベル(type=1)の minutes。dailyDetails.levelMinutes は
+// 実データで欠けることがあるため、ストラクチャーの Lv.1 を第一候補にする。
+function firstLevelMinutes(levels) {
+  if (!Array.isArray(levels)) return 0;
+  const isBreak = (l) => l.type === 'break' || l.type === 2 || l.type === '2';
+  const first = levels.find((l) => !isBreak(l));
+  return first ? num(first.minutes) : 0;
+}
+
 function buildStats(ev) {
   const s = ev.stats || {};
   return {
@@ -225,6 +234,24 @@ export function buildResults(players) {
     .sort((a, b) => a.pos - b.pos);
 }
 
+// GET /v1/event/{id}/payouts → app.js payouts[]
+// 実データ: [{ position, percentage, amount, payoutAmount, description, winner, ... }]
+//   - description は現物賞品の表記("4 Tickets" / "1E × 2,000P")。現金のみの大会では ""。
+//   - percentage はサテライト等では 0(配分率を使わずチケット固定のため)。
+// 管理画面と同じく 1 順位 1 行のまま返す(同額が続いても結合しない)。
+export function buildPayouts(payouts) {
+  const arr = Array.isArray(payouts) ? payouts : (payouts && payouts.results) || [];
+  return arr
+    .map((p) => ({
+      pos: num(p.position),
+      pct: Number(p.percentage) || 0,
+      amount: num(p.payoutAmount) || num(p.amount),
+      description: (p.description || '').trim(),
+    }))
+    .filter((r) => r.pos > 0)
+    .sort((a, b) => a.pos - b.pos);
+}
+
 // --- イベント本体 ---------------------------------------------------------
 
 // 共通の(カード/ヘッダ/情報タブに必要な)フィールドを組み立てる
@@ -258,7 +285,8 @@ function baseEvent(ev, levels) {
     fee: num(buyin.fee),
     guarantee: num(sub.guaranteedAmount) || num(ev.stats && ev.stats.guaranteedAmount),
     startingStack: num(buyin.chips),
-    levelMinutes: num(dd.levelMinutes) || num(ev.status && ev.status.levelMinutes),
+    levelMinutes:
+      firstLevelMinutes(levels) || num(dd.levelMinutes) || num(ev.status && ev.status.levelMinutes),
     lateReg: lateRegLevel != null ? `Late Reg until Lv.${num(lateRegLevel)}` : '',
     reentry: reentryText(ev),
     gameType: (ev.behaviour && ev.behaviour.gameType && ev.behaviour.gameType.name) || '',
@@ -276,6 +304,7 @@ export function toListEvent(ev, { levels } = {}) {
   // 詳細(structure/results)は空で返し、カード展開時に /api/events/:id で差し替える。
   // app.js が描画時に参照するため、空配列/オブジェクトを必ず用意しておく(未定義だと落ちる)。
   out.structure = [];
+  out.payouts = [];
   if (base.status === 'running') out.live = buildLive(ev, levels);
   if (base.status === 'future') out.registration = buildRegistration(ev);
   if (base.status === 'past') out.results = [];
@@ -300,12 +329,13 @@ export function buildSeats(players) {
 }
 
 // 詳細用(アコーディオン内の structure / results / live / seats をフルに埋める)
-export function toDetailEvent(ev, { levels, players } = {}) {
+export function toDetailEvent(ev, { levels, players, payouts } = {}) {
   const base = baseEvent(ev, levels);
   const lateRegLevel = base._lateRegLevel;
   delete base._lateRegLevel;
   const out = Object.assign({}, base);
   out.structure = buildStructure(levels, lateRegLevel);
+  out.payouts = buildPayouts(payouts); // Prize タブ(空なら app.js 側でモデル表示にフォールバック)
   if (base.status === 'running') {
     out.live = buildLive(ev, levels);
     out.seats = buildSeats(players); // 座席No + プレイヤー名

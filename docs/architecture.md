@@ -73,11 +73,12 @@
 | `buyin` / `fee` | `subscription.buyin.buyin` / `.fee` |
 | `guarantee` | `subscription.guaranteedAmount`(or `stats.guaranteedAmount`) |
 | `startingStack` | `subscription.buyin.chips` |
-| `levelMinutes` | `dailyDetails.levelMinutes` |
+| `levelMinutes` | `GET /v1/event/{id}/levels` の Lv.1(最初の `type=1`)の `minutes`。無ければ `dailyDetails.levelMinutes` → `status.levelMinutes` |
 | `lateReg` | `subscription.lateRegistrationLevel` → `"Late Reg until Lv.N"` |
 | `reentry` | `description.multipleEntries` / `behaviour.code` |
 | `gameType` | `behaviour.gameType.name` |
 | `structure[]` | `GET /v1/event/{id}/levels`(EventLevel[]) |
+| `payouts[]` | `GET /v1/event/{id}/payouts`。`position` / `percentage` / `payoutAmount` / `description`(現物賞品の表記 "4 Tickets" 等。現金のみなら空) |
 | `stats{}` | `stats.total*` / `averageChipsCount` 等 |
 | `live{}`(running) | `status.levelIndex` + 現在レベルのブラインド + `stats.totalTables` |
 | `registration{}`(future) | `subscription.buyins` + `stats.totalReservations` + `dailyDetails.playerAllowed` |
