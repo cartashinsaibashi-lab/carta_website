@@ -19,7 +19,8 @@
     pickerOpen: false,                  // 年月ピッカーの開閉
     pickerYear: CALENDAR.today.year,    // ピッカー内で選択中の年
     favOnly: false,                     // お気に入りのみ表示
-    openedId: null
+    openedId: null,
+    openedTab: null                     // 開いているカードで選択中のタブ(再描画をまたいで保持)
   };
 
   /* ---------- お気に入り / 申込状態(モックでは localStorage に保存) ----------
@@ -486,16 +487,25 @@
     var tabs = tabsFor(ev);
     var opened = state.openedId === ev.id;
 
-    var tabButtons = tabs.map(function (t, i) {
+    /* 選択中のタブ。詳細ロード後の再描画でも選択が Info に戻らないよう state から復元する
+     * (?event= の直リンクでは、開いた直後にタブを押しても押し直しにならないようにする)。
+     * 対象カード以外・タブが存在しない場合は先頭タブ。 */
+    var activeKey = tabs[0] && tabs[0].key;
+    if (opened && state.openedTab) {
+      var found = tabs.some(function (t) { return t.key === state.openedTab; });
+      if (found) activeKey = state.openedTab;
+    }
+
+    var tabButtons = tabs.map(function (t) {
       return (
-        '<button class="detail-tab' + (i === 0 ? ' is-active' : '') + '" data-tab="' + t.key + '">' +
+        '<button class="detail-tab' + (t.key === activeKey ? ' is-active' : '') + '" data-tab="' + t.key + '">' +
         esc(t.label) + '</button>'
       );
     }).join('');
 
-    var tabPanels = tabs.map(function (t, i) {
+    var tabPanels = tabs.map(function (t) {
       return (
-        '<div class="detail-panel' + (i === 0 ? ' is-active' : '') + '" data-panel="' + t.key + '">' +
+        '<div class="detail-panel' + (t.key === activeKey ? ' is-active' : '') + '" data-panel="' + t.key + '">' +
         panelHtml(ev, t.key) +
         '</div>'
       );
@@ -767,7 +777,7 @@
   /* ---------- ライブ状況のポーリング(進行中カードを開いている間だけ) ----------
    * PokerLens にプッシュ配信は無いため、開いている進行中カードだけを一定間隔で
    * 再取得して Live パネルを更新する。カードを閉じる/他へ移る/ページ非表示で停止。
-   * 全体 render() だと Live タブ選択が戻るので、Live パネルだけ差し替える。 */
+   * 25 秒ごとに全体 render() を走らせるのは重いので、Live パネルだけ差し替える。 */
 
   var livePollTimer = null;
   var livePollId = null;
@@ -841,6 +851,7 @@
 
   /* 詳細ロード完了後にカードを開く(全体再描画で詳細を反映してから展開) */
   function openCard(id) {
+    if (state.openedId !== id) state.openedTab = null; // 別カードを開いたらタブ選択はリセット
     state.openedId = id;
     render();
     startLivePolling(id);
@@ -858,6 +869,7 @@
         if (state.openedId === id) {
           // 閉じる(即時)
           state.openedId = null;
+          state.openedTab = null;
           applyOpenState();
           syncOpenParam();
           stopLivePolling();
@@ -880,6 +892,7 @@
         tab.addEventListener('click', function (e) {
           e.stopPropagation();
           var key = tab.dataset.tab;
+          if (card.dataset.id === state.openedId) state.openedTab = key; // 再描画をまたいで保持
           card.querySelectorAll('.detail-tab').forEach(function (t) {
             t.classList.toggle('is-active', t === tab);
           });
