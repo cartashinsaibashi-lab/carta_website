@@ -64,35 +64,64 @@ function buyin(amount, fee, chips, description) {
   };
 }
 
+const NAMES = [
+  ['Kenji', 'Tanaka', 'JP'], ['Yuki', 'Sato', 'JP'], ['Marco', 'Rossi', 'IT'],
+  ['Anna', 'Nguyen', 'VN'], ['Liam', "O'Brien", 'IE'], ['Sofia', 'Garcia', 'ES'],
+  ['Haruto', 'Suzuki', 'JP'], ['Chen', 'Wei', 'CN'], ['Emma', 'Johnson', 'US'],
+  ['Noah', 'Kim', 'KR'],
+];
+
+function makePlayer(i) {
+  const [firstname, lastname, code] = NAMES[i % NAMES.length];
+  return {
+    id: 'pl-' + i,
+    firstname,
+    lastname,
+    nickname: firstname,
+    preferredName: `${firstname} ${lastname[0]}.`,
+    countryName: code,
+    countryUrl: `https://api.pokerlens.net/v1/country/${code}/flag`,
+  };
+}
+
 // EventPlayer[](結果タブ用)
 function makePlayers(n) {
-  const names = [
-    ['Kenji', 'Tanaka', 'JP'], ['Yuki', 'Sato', 'JP'], ['Marco', 'Rossi', 'IT'],
-    ['Anna', 'Nguyen', 'VN'], ['Liam', "O'Brien", 'IE'], ['Sofia', 'Garcia', 'ES'],
-    ['Haruto', 'Suzuki', 'JP'], ['Chen', 'Wei', 'CN'], ['Emma', 'Johnson', 'US'],
-    ['Noah', 'Kim', 'KR'],
-  ];
   const prizes = [1200000, 780000, 520000, 360000, 260000, 190000, 140000, 110000, 90000, 75000];
-  return Array.from({ length: n }, (_, i) => {
-    const [firstname, lastname, code] = names[i % names.length];
-    return {
-      position: i + 1,
-      busted: true,
-      player: {
-        id: 'pl-' + i,
-        firstname,
-        lastname,
-        nickname: firstname,
-        preferredName: `${firstname} ${lastname[0]}.`,
-        countryName: code,
-        countryUrl: `https://api.pokerlens.net/v1/country/${code}/flag`,
-      },
-      payout: {
-        payoutAmount: prizes[i] || 60000,
-        bountyAmount: i < 3 ? 50000 : 0,
-      },
-    };
-  });
+  return Array.from({ length: n }, (_, i) => ({
+    position: i + 1,
+    busted: true,
+    player: makePlayer(i),
+    payout: {
+      payoutAmount: prizes[i] || 60000,
+      bountyAmount: i < 3 ? 50000 : 0,
+    },
+  }));
+}
+
+// 進行中の大会の着席者(Live タブの座席表用)。
+// 実データと同じく tableIndex / seatIndex / chipsCount を持ち、busted は false。
+// 一部の席は飛ばして、バストで抜けた空席がある状態を再現する。
+function makeSeatedPlayers(count, seatsPerTable) {
+  const out = [];
+  let table = 1;
+  let seat = 1;
+  let guard = 0;
+  while (out.length < count && guard++ < count * 3) {
+    const vacant = (table * 7 + seat * 3) % 11 === 0; // 決め打ちの空席パターン
+    if (!vacant) {
+      const i = out.length;
+      out.push({
+        busted: false,
+        tableIndex: table,
+        seatIndex: seat,
+        chipsCount: (((i * 37) % 90) + 8) * 5000,
+        player: makePlayer(i),
+      });
+    }
+    seat += 1;
+    if (seat > seatsPerTable) { seat = 1; table += 1; }
+  }
+  return out;
 }
 
 // GET /v1/event/{id}/payouts のレスポンス([{ position, percentage, amount, description, ... }])。
@@ -126,7 +155,10 @@ function venueEvent(over) {
       playerAllowed: over.cap || 0,
       subscriptionAllowed: over.subscriptionAllowed !== false,
       subscriptionClose: over.subscriptionClose || null,
-      description: over.description || '',
+      // levelDescription = 管理画面の Description(Info タブに出す説明文)
+      levelDescription: over.description || '',
+      // description = 管理画面の Announcement(運用メモ。表示には使わない)
+      description: over.announcement || '',
       logoUrl: '',
     },
     behaviour: {
@@ -185,6 +217,9 @@ const EVENTS = [
     elapsedSeconds: 600,
     lateRegLevel: 9,
     guarantee: 10000000,
+    // 実データに合わせて Description(表示) と Announcement(運用メモ) を別々に持たせる
+    description: '11名が Day 2 に進出します。',
+    announcement: 'Unlimited',
     buyin: buyin(30000, 3000, 30000, 'Standard'),
     allowRebuy: false,
     stats: {
@@ -220,6 +255,8 @@ const EVENTS = [
     guarantee: 0,
     cap: 120,
     subscriptionClose: '2026-08-01T20:00:00',
+    description: '5エントリー毎に1名様がマルチ・チケットを獲得することができます。',
+    announcement: '5E毎にマルチチケット',
     buyin: buyin(5000, 500, 15000, 'Satellite'),
     stats: { totalReservations: 41 },
   }),
@@ -257,6 +294,7 @@ const LEVELS_BY_ID = {
 
 const PLAYERS_BY_ID = {
   'evt-weekly-bounty': makePlayers(10),
+  'evt-wolf-main': makeSeatedPlayers(138, 9),   // 進行中: 9 max × 16 卓ぶんの着席者
 };
 
 const PAYOUTS_BY_ID = {

@@ -20,7 +20,8 @@
     pickerYear: CALENDAR.today.year,    // ピッカー内で選択中の年
     favOnly: false,                     // お気に入りのみ表示
     openedId: null,
-    openedTab: null                     // 開いているカードで選択中のタブ(再描画をまたいで保持)
+    openedTab: null,                    // 開いているカードで選択中のタブ(再描画をまたいで保持)
+    seatTable: null                     // 座席表で選択中のテーブル番号(ライブ更新をまたいで保持)
   };
 
   /* ---------- お気に入り / 申込状態(モックでは localStorage に保存) ----------
@@ -140,7 +141,8 @@
     var rows = [
       ['Date & Time', ev.dateLabel + ' Start'],
       ['Venue', ev.venue],
-      ['Buy-in', yen(ev.buyin) + ' + ' + yen(ev.fee) + ' (total ' + yen(ev.buyin + ev.fee) + ')'],
+      /* Buy-in は subscription.buyin.fee のみを表示する(本体・合計は出さない) */
+      ['Buy-in', yen(ev.fee)],
       ['Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None'],
       ['Starting Stack', num(ev.startingStack) + ' chips'],
       ['Level Length', mins ? mins + ' min' : '—'],
@@ -161,7 +163,7 @@
     var dl = rows.map(function (r) {
       return '<div class="info-row"><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>';
     }).join('');
-    /* 大会詳細(本番では GET /v1/event/{id} の dailyDetails.description から取得) */
+    /* 大会詳細(本番では GET /v1/event/{id} の dailyDetails.levelDescription から取得) */
     var detailsHtml = '';
     if (ev.details && ev.details.length) {
       detailsHtml =
@@ -170,8 +172,12 @@
         ev.details.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') +
         '</ul>';
     }
+    /* 説明文が未入力の大会(2 割ほどある)では段落ごと出さない */
+    var descHtml = ev.description
+      ? '<p class="event-description">' + esc(ev.description) + '</p>'
+      : '';
     return (
-      '<p class="event-description">' + esc(ev.description) + '</p>' +
+      descHtml +
       '<dl class="info-grid">' + dl + '</dl>' +
       detailsHtml
     );
@@ -246,19 +252,7 @@
 
   function livePanel(ev) {
     var lv = ev.live;
-    var seatsHtml = '';
-    if (ev.seats && ev.seats.length) {
-      seatsHtml =
-        '<div class="live-seats">' +
-        '<h4 class="live-seats-title">Seating (' + ev.seats.length + ')</h4>' +
-        '<div class="seat-grid">' +
-        ev.seats.map(function (s) {
-          return '<div class="seat-item">' +
-            '<span class="seat-no">T' + num(s.table) + ' · #' + num(s.seat) + '</span>' +
-            '<span class="seat-name">' + esc(s.player) + '</span></div>';
-        }).join('') +
-        '</div></div>';
-    }
+    var seatsHtml = seatingHtml(ev);
     return (
       '<div class="live-board">' +
       '  <div class="live-clock">' +
@@ -292,6 +286,127 @@
     );
   }
 
+  /* ---------- 座席表(Seating) ----------
+   * 卓を真上から見たイメージで、楕円のテーブルの周りに席を並べる。
+   * ディーラー(下辺中央)の位置を空け、そこから時計回りに 1 番席から配置する。
+   * 複数卓のときはタブで 1 卓ずつ切り替える(選択はライブ更新をまたいで保持)。 */
+
+  var SEAT_RING_MIN = 6;   // 残り人数が少ない卓でも楕円が潰れないようにする最小席数
+
+  function seatingHtml(ev) {
+    if (!ev.seats || !ev.seats.length) return '';
+    var tables = groupSeatsByTable(ev.seats);
+    var active = activeSeatTable(tables);
+
+    var title = 'Seating (' + num(ev.seats.length) + ' seated' +
+      (tables.length > 1 ? ' · ' + tables.length + ' tables' : '') + ')';
+
+    var tabs = tables.length > 1
+      ? '<div class="seat-tabs" role="tablist" aria-label="Table">' +
+        tables.map(function (t) {
+          var on = t.no === active;
+          return (
+            '<button type="button" class="seat-tab' + (on ? ' is-active' : '') + '"' +
+            ' data-table="' + t.no + '" role="tab" aria-selected="' + on + '">' +
+            'Table ' + num(t.no) +
+            '<span class="seat-tab-count">' + t.seats.length + '</span>' +
+            '</button>'
+          );
+        }).join('') +
+        '</div>'
+      : '';
+
+    return (
+      '<div class="live-seats">' +
+      '<h4 class="live-seats-title">' + esc(title) + '</h4>' +
+      tabs +
+      tables.map(function (t) { return seatTableHtml(t, t.no === active); }).join('') +
+      '</div>'
+    );
+  }
+
+  /* seats[] をテーブル番号ごとにまとめる(卓番号の昇順) */
+  function groupSeatsByTable(seats) {
+    var byNo = {};
+    var tables = [];
+    seats.forEach(function (s) {
+      var no = Number(s.table) || 0;
+      if (!byNo[no]) { byNo[no] = { no: no, seats: [] }; tables.push(byNo[no]); }
+      byNo[no].seats.push(s);
+    });
+    tables.sort(function (a, b) { return a.no - b.no; });
+    return tables;
+  }
+
+  /* 選択中の卓。保持していた卓が今の座席表に無ければ先頭の卓に戻す
+   * (卓の統合やブレイクで消えることがあるため) */
+  function activeSeatTable(tables) {
+    var want = Number(state.seatTable);
+    var kept = tables.some(function (t) { return t.no === want; });
+    return kept ? want : tables[0].no;
+  }
+
+  function seatTableHtml(t, isActive) {
+    /* 席数は「その卓で確認できる最大の席番号」を上限とみなす。
+     * 空いている番号はバスト等による空席として席だけ描く。 */
+    var maxSeat = t.seats.reduce(function (m, s) { return Math.max(m, Number(s.seat) || 0); }, 0);
+    var ring = Math.max(maxSeat, t.seats.length, SEAT_RING_MIN);
+    var taken = {};
+    t.seats.forEach(function (s) { taken[Number(s.seat)] = s; });
+
+    var nodes = '';
+    for (var no = 1; no <= ring; no++) nodes += seatNodeHtml(taken[no], no, ring);
+
+    return (
+      '<div class="seat-table' + (isActive ? ' is-active' : '') + '" data-table-view="' + t.no + '">' +
+      '<div class="seat-ring">' +
+      '<div class="seat-felt">' +
+      '<span class="seat-felt-label">TABLE</span>' +
+      '<span class="seat-felt-no">' + num(t.no) + '</span>' +
+      '<span class="seat-felt-sub">' + t.seats.length + ' players</span>' +
+      '</div>' +
+      '<div class="seat-dealer" ' + seatPos(0, ring) + '>DEALER</div>' +
+      nodes +
+      '</div></div>'
+    );
+  }
+
+  function seatNodeHtml(s, no, ring) {
+    if (!s) {
+      return (
+        '<div class="seat-node is-empty" ' + seatPos(no, ring) + '>' +
+        '<span class="seat-dot">' + no + '</span>' +
+        '<span class="seat-player">Empty</span>' +
+        '</div>'
+      );
+    }
+    return (
+      '<div class="seat-node" ' + seatPos(no, ring) + '>' +
+      '<span class="seat-dot">' + no + '</span>' +
+      '<span class="seat-player" title="' + esc(s.player) + '">' + esc(s.player) + '</span>' +
+      '<span class="seat-chips">' + (s.chips > 0 ? num(s.chips) : '') + '</span>' +
+      '</div>'
+    );
+  }
+
+  /* 卓タブの横スクロール位置を選択中の卓に合わせる。
+   * ライブ更新でタブ列ごと作り直されるため、描画のたびに呼んで表示位置を復元する。 */
+  function syncSeatTabScroll() {
+    document.querySelectorAll('.seat-tabs').forEach(function (strip) {
+      var on = strip.querySelector('.seat-tab.is-active');
+      if (!on) return;
+      strip.scrollLeft = Math.max(0, on.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2);
+    });
+  }
+
+  /* 楕円上の位置。slot 0 = ディーラー(下辺中央)、1..ring = 席番号。
+   * 実際の座り方に合わせて、ディーラーの左隣(左下)を 1 番席として時計回りに進む。
+   * sin/cos だけを渡し、席カードの大きさ分を差し引く計算は CSS 側で行う。 */
+  function seatPos(slot, ring) {
+    var th = 2 * Math.PI * slot / (ring + 1);
+    return 'style="--sx:' + (-Math.sin(th)).toFixed(4) + ';--cy:' + Math.cos(th).toFixed(4) + '"';
+  }
+
   /* 賞金分配(Prize)パネル — 開催中・受付中・終了の全大会に共通で表示。
    * GET /v1/event/{id}/payouts の確定ペイアウトを優先し、未設定の大会だけ
    * 標準配分モデルにフォールバックする。 */
@@ -322,8 +437,8 @@
   }
 
   /* 確定ペイアウト表。
-   * Prize 列は description(現物賞品: "4 Tickets" / "1E × 2,000P")を主表示にし、
-   * 金額があれば併記する。description が無い大会は従来どおり金額のみ。
+   * Prize 列は description(現物賞品: "4 Tickets" / "1E × 2,000P")だけを表示する。
+   * description が無い大会(現金のみ)は従来どおり金額を出す。
    * Share 列は配分率を持つ大会だけ出す(サテライトは percentage=0 のため列ごと省く)。 */
   function payoutTable(payouts) {
     var hasShare = payouts.some(function (p) { return p.pct > 0; });
@@ -331,7 +446,7 @@
     var rows = payouts.map(function (p) {
       var posCls = p.pos === 1 ? ' class="row-winner"' : '';
       var prize = p.description
-        ? esc(p.description) + (p.amount ? ' <span class="prize-sub">' + yen(p.amount) + '</span>' : '')
+        ? esc(p.description)
         : (p.amount ? yen(p.amount) : '—');
       return (
         '<tr' + posCls + '>' +
@@ -343,7 +458,7 @@
     }).join('');
 
     return (
-      '<div class="table-scroll"><table class="data-table prize-table">' +
+      '<div class="table-scroll prize-scroll"><table class="data-table prize-table">' +
       '<thead><tr><th>Place</th>' + (hasShare ? '<th>Share</th>' : '') + '<th>Prize</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '</table></div>'
@@ -376,7 +491,7 @@
       '<td class="col-prize">' + prizeCell(restPct) + '</td></tr>';
 
     return (
-      '<div class="table-scroll"><table class="data-table prize-table">' +
+      '<div class="table-scroll prize-scroll"><table class="data-table prize-table">' +
       '<thead><tr><th>Place</th><th>Share</th><th>Prize</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '</table></div>' +
@@ -539,7 +654,8 @@
     var linesHtml = isPast ? '' : (
       '    <div class="card-lines">' +
       '      <div class="card-line">' + headStat('Date', dt.date) + headStat('Start', dt.time) + headStat(sec.k, sec.v) + '</div>' +
-      '      <div class="card-line">' + headStat('Buy-in', yen(ev.buyin + ev.fee)) + headStat('Chips', num(ev.startingStack)) + headStat(pl.k, pl.v) + '</div>' +
+      /* Buy-in は Info タブと揃えて fee のみを表示する */
+      '      <div class="card-line">' + headStat('Buy-in', yen(ev.fee)) + headStat('Chips', num(ev.startingStack)) + headStat(pl.k, pl.v) + '</div>' +
       '    </div>'
     );
 
@@ -642,6 +758,7 @@
     emptyEl.hidden = events.length > 0;
     bindCards();
     startTimers();
+    syncSeatTabScroll();
     syncOpenParam();
     prefetchVisibleDetails(); // 表示中カードの詳細をバックグラウンド先読み
   }
@@ -806,6 +923,7 @@
     panel.innerHTML = livePanel(ev);
     clearTimers();
     startTimers(); // 差し替えた data-timer にカウントダウンを付け直す
+    syncSeatTabScroll();
   }
 
   function pollLiveOnce(id) {
@@ -851,7 +969,10 @@
 
   /* 詳細ロード完了後にカードを開く(全体再描画で詳細を反映してから展開) */
   function openCard(id) {
-    if (state.openedId !== id) state.openedTab = null; // 別カードを開いたらタブ選択はリセット
+    if (state.openedId !== id) {
+      state.openedTab = null;  // 別カードを開いたらタブ選択はリセット
+      state.seatTable = null;  // 座席表の卓選択も引き継がない
+    }
     state.openedId = id;
     render();
     startLivePolling(id);
@@ -870,6 +991,7 @@
           // 閉じる(即時)
           state.openedId = null;
           state.openedTab = null;
+          state.seatTable = null;
           applyOpenState();
           syncOpenParam();
           stopLivePolling();
@@ -921,6 +1043,24 @@
       }
     });
   }
+
+  /* 座席表の卓タブ。ライブ更新でパネルごと差し替わるため、カードではなく
+   * 一覧に 1 つだけ委譲リスナーを置いてバインドが外れないようにする。 */
+  listEl.addEventListener('click', function (e) {
+    var tab = e.target.closest('.seat-tab');
+    if (!tab) return;
+    var wrap = tab.closest('.live-seats');
+    if (!wrap) return;
+    state.seatTable = Number(tab.dataset.table);
+    wrap.querySelectorAll('.seat-tab').forEach(function (t) {
+      var on = t === tab;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', on);
+    });
+    wrap.querySelectorAll('.seat-table').forEach(function (v) {
+      v.classList.toggle('is-active', v.dataset.tableView === tab.dataset.table);
+    });
+  });
 
   /* ---------- 日付・月セレクター ---------- */
 

@@ -290,7 +290,10 @@ function baseEvent(ev, levels) {
     lateReg: lateRegLevel != null ? `Late Reg until Lv.${num(lateRegLevel)}` : '',
     reentry: reentryText(ev),
     gameType: (ev.behaviour && ev.behaviour.gameType && ev.behaviour.gameType.name) || '',
-    description: dd.description || '',
+    /* 大会説明文は dailyDetails.levelDescription(管理画面の Description)。
+     * dailyDetails.description は管理画面の Announcement で、"Unlimited" や
+     * "Level 8 / 18:30" のような運用メモが入るため表示には使わない。 */
+    description: dd.levelDescription || '',
     stats: buildStats(ev),
     _lateRegLevel: lateRegLevel, // 内部利用(structure 生成)。フロントには影響しない
   };

@@ -51,9 +51,13 @@
 - `subscription`: バイイン内訳(`buyin` / `fee`)、リエントリー可否(`rebuyAllowed` 等)、レイトレジ(`lateRegistrationLevel`)、保証額(`guaranteedAmount`)
 - `description`: スタック(`chips`)、リエントリー(`multipleEntries`)、マルチデイ(`multiDay`)などの**整形済み表示用テキスト**(¥表記等がすでに整形されている)
 - `behaviour`: フリーズアウト等の形式(`code`)、ゲーム種別、日数
-- **`dailyDetails.description`(string): 大会の自由記述の説明文**。モックの「大会情報」タブ内『大会詳細』セクションはこのフィールドを想定
-  - 補足: `dailyDetails.levelDescription`(ストラクチャー概要文)、`dailyDetails.name / fullname / shortName`(表示名のバリエーション)、`dailyDetails.subscriptionOpen / subscriptionClose`(受付期間)もここにある
-  - 注意: 実データでこのフィールドに説明文が入力されているかは店舗側の運用次第のため要確認(未入力の場合はセクション非表示にする実装をモックに入れてある)
+- **`dailyDetails.levelDescription`(string): 大会の説明文(管理画面の Description タブ)**。Info タブ上部の説明文はこれを表示する
+  - 実データ調査(2026-08 時点 / 過去 899 大会): 723 件(80%)に入力あり、平均 54 文字・最長 212 文字・改行なし
+  - 例: 「相手をバストさせた場合、相手が持っているバウンティーチップ1枚を奪うことができます。」「11名が Day 2 に進出します。」
+- `dailyDetails.description`(string): 管理画面の **Announcement** タブの値。運用メモが入るため**表示には使わない**
+  - 実データ例: `Unlimited` / `Level 8 / 18:30` / `カルタドル or +POINT` / `0`(ユニーク 32 種のみ)
+- 補足: `dailyDetails.name / fullname / shortName`(表示名のバリエーション)、`dailyDetails.subscriptionOpen / subscriptionClose`(受付期間)もここにある
+- `waitingListText` / `waitingListNowSeatingText` / `area` は全大会で空(2026-08 時点)
 
 ### 3. ストラクチャー(「ストラクチャー」タブ)
 

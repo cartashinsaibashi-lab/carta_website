@@ -1523,15 +1523,25 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 
 /* ---------- 賞金分配(Prize)パネル ---------- */
 
-.prize-table .col-pos { width: 2.8em; text-align: center; font-weight: 700; }
+/* 賞金表は列が少ない(Place / Share / Prize)ため、幅に上限を設けて囲みごと
+ * パネル中央に配置する。全列センター揃えで左右の余白を均等にする。 */
+.prize-scroll {
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 列は等幅に割り、Place も含めて左右対称に見せる */
+.data-table.prize-table { table-layout: fixed; }
+
+.data-table.prize-table th,
+.data-table.prize-table td { text-align: center; }
+
+.prize-table .col-pos { font-weight: 700; }
 .prize-table .col-prize { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.02em; }
 
-/* 現物賞品(payouts の description: "4 Tickets" 等)に併記する金額 */
-.prize-table .prize-sub {
-  font-weight: 400;
-  color: var(--text-faint);
-  white-space: nowrap;
-}
+/* 標準配分モデルの注記も表に合わせて中央寄せ */
+.prize-scroll + .reg-note { margin-left: auto; margin-right: auto; text-align: center; }
 
 /* ---------- ライブ状況パネル ---------- */
 
@@ -1627,8 +1637,12 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
   color: var(--text-faint);
 }
 
-/* ライブ座席一覧(座席No + プレイヤー名) */
-.live-seats { margin-top: 16px; }
+/* ---------- ライブ座席表(卓を真上から見たレイアウト) ----------
+ * .seat-ring を楕円のテーブルに見立て、席カードを縁に沿って並べる。
+ * 位置は JS が渡す --sx / --cy(sin / cos)だけで決まり、席カードの大きさ分を
+ * 半径から差し引くことで、はみ出さずにリング内へ収める。 */
+
+.live-seats { margin-top: 18px; }
 
 .live-seats-title {
   font-size: 12px;
@@ -1639,42 +1653,219 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
   margin-bottom: 10px;
 }
 
-.seat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
+/* 卓の切り替えタブ(2 卓以上のときだけ出る)。卓数が多くても横スクロールで収める */
+.seat-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  margin-bottom: 12px;
 }
 
-.seat-item {
-  display: flex;
+.seat-tabs::-webkit-scrollbar { display: none; }
+
+.seat-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
 }
 
-.seat-no {
-  flex: 0 0 auto;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+.seat-tab:hover { color: var(--text); }
+
+.seat-tab.is-active {
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.55);
   color: var(--accent-bright);
-  background: rgba(var(--accent-rgb), 0.12);
-  border-radius: 6px;
-  padding: 2px 7px;
-  white-space: nowrap;
 }
 
-.seat-name {
-  min-width: 0;
-  font-size: 13px;
+.seat-tab-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.seat-tab.is-active .seat-tab-count {
+  color: inherit;
+  background: rgba(var(--accent-rgb), 0.18);
+}
+
+/* 選択中の卓だけ表示 */
+.seat-table { display: none; }
+.seat-table.is-active { display: block; }
+
+.seat-ring {
+  --seat-w: 84px;
+  --seat-h: 62px;
+  --seat-dot: 30px;
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  aspect-ratio: 1 / 0.82;
+  margin: 0 auto;
+}
+
+/* テーブルの縁(レール)。席の丸の中心を通る楕円を引いて着席位置を示す。
+ * 席は translate(-50%,-50%) で中心を合わせているため、丸は node の中心より
+ * (seat-h - seat-dot)/2 だけ上にある。その分だけ楕円を上へずらす。 */
+.seat-ring::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--seat-w) / 2);
+  right: calc(var(--seat-w) / 2);
+  top: calc(var(--seat-dot) / 2);
+  bottom: calc(var(--seat-h) - var(--seat-dot) / 2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+/* テーブル面(フェルト)。レールの内側に、実際の卓に近い横長で置く */
+.seat-felt {
+  position: absolute;
+  left: calc(var(--seat-w) / 2 + 9%);
+  right: calc(var(--seat-w) / 2 + 9%);
+  top: calc(var(--seat-dot) / 2 + 20%);
+  bottom: calc(var(--seat-h) - var(--seat-dot) / 2 + 20%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse 90% 80% at 50% 30%, rgba(var(--accent-rgb), 0.12), transparent),
+    var(--bg-inset);
+}
+
+.seat-felt-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--text-faint);
+}
+
+.seat-felt-no {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent-bright);
+}
+
+.seat-felt-sub {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+/* 席カード(丸 + 名前 + チップ)。楕円の縁に中心を合わせる */
+.seat-node {
+  position: absolute;
+  left: calc(50% + var(--sx) * (50% - var(--seat-w) / 2));
+  top: calc(50% + var(--cy) * (50% - var(--seat-h) / 2));
+  transform: translate(-50%, -50%);
+  width: var(--seat-w);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.seat-dot {
+  display: grid;
+  place-items: center;
+  width: var(--seat-dot);
+  height: var(--seat-dot);
+  border-radius: 50%;
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  background: var(--bg-card);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent-bright);
+}
+
+.seat-player {
+  max-width: 100%;
+  font-size: 11.5px;
+  line-height: 1.25;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.seat-chips {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 空席は控えめに */
+.seat-node.is-empty .seat-dot {
+  border-style: dashed;
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-faint);
+}
+
+.seat-node.is-empty .seat-player { color: var(--text-faint); }
+
+/* ディーラー位置(下辺中央) */
+.seat-dealer {
+  position: absolute;
+  left: calc(50% + var(--sx) * (50% - var(--seat-w) / 2));
+  top: calc(50% + var(--cy) * (50% - var(--seat-h) / 2));
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+@media (max-width: 560px) {
+  .seat-ring {
+    --seat-w: 66px;
+    --seat-h: 56px;
+    --seat-dot: 26px;
+    aspect-ratio: 1 / 0.95;
+  }
+
+  .seat-felt {
+    left: calc(var(--seat-w) / 2 + 4%);
+    right: calc(var(--seat-w) / 2 + 4%);
+    top: calc(var(--seat-dot) / 2 + 21%);
+    bottom: calc(var(--seat-h) - var(--seat-dot) / 2 + 21%);
+  }
+
+  .seat-felt-no { font-size: 24px; }
+  .seat-player { font-size: 10.5px; }
+  .seat-chips { font-size: 10px; }
+  .seat-dealer { width: 38px; height: 38px; font-size: 7.5px; }
 }
 
 /* ---------- 申込状況パネル ---------- */
@@ -2295,7 +2486,12 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   .fav-btn { width: 30px; height: 30px; font-size: 17px; }
 
   .card-lines { padding: 6px 12px 11px; }
-  .card-line { gap: 4px 14px; }
+  /* 情報行は 1 行 3 項目(Date/Start/Reg Close)を必ず 1 段に収める。
+   * 390px 幅では使える幅が 333px しかなく、曜日が幅広(Thu)+レジクロが 2 桁(Lv.10)の
+   * 大会だと既定の gap では 1px ほど溢れて Reg Close だけ次段に落ちていた。
+   * 項目間 14→10px / ラベルと値の間 7→5px で計 14px 詰めて余裕を作る。 */
+  .card-line { gap: 4px 10px; }
+  .card-stat { gap: 5px; }
   .card-stat .v { font-size: 13px; }
 
   /* アコーディオン内 */
