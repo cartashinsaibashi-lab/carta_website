@@ -1613,20 +1613,44 @@
 
   /* ---------- 上部タブ / フィルタ ---------- */
 
-  document.getElementById('categoryTabs').addEventListener('click', function (e) {
-    var btn = e.target.closest('.category-tab');
-    if (!btn) return;
-    state.category = btn.dataset.category;
+  /* 種別の切り替え。ヘッダーのタブと、初回表示の選択画面の両方から呼ぶ。 */
+  function selectCategory(category) {
+    state.category = category;
     state.openedId = null;
     document.querySelectorAll('.category-tab').forEach(function (t) {
-      t.classList.toggle('is-active', t === btn);
+      t.classList.toggle('is-active', t.dataset.category === category);
     });
-    applyTheme(state.category);
+    applyTheme(category);
     state.pickerOpen = false;
     renderMonthNav();
     renderDateStrip();
     render();
+  }
+
+  document.getElementById('categoryTabs').addEventListener('click', function (e) {
+    var btn = e.target.closest('.category-tab');
+    if (!btn) return;
+    selectCategory(btn.dataset.category);
   });
+
+  /* ---------- 初回表示の種別選択 ----------
+   * どのシリーズを見るかを最初に選んでもらう。選ぶとその種別の一覧に切り替わる。
+   * ?event=<id> で特定の大会を開く場合は種別が決まっているので出さない。 */
+  function setupCategoryGate() {
+    var gate = document.getElementById('categoryGate');
+    if (!gate) return;
+    if (new URLSearchParams(location.search).get(OPEN_PARAM)) return;
+
+    gate.hidden = false;
+    document.body.classList.add('gate-open'); // 背後をスクロールさせない
+    gate.addEventListener('click', function (e) {
+      var btn = e.target.closest('.gate-item');
+      if (!btn) return;
+      selectCategory(btn.dataset.category);
+      gate.hidden = true;
+      document.body.classList.remove('gate-open');
+    });
+  }
 
   document.getElementById('favFilter').addEventListener('click', function () {
     state.favOnly = !state.favOnly;
@@ -1669,6 +1693,8 @@
     var initialCard = document.getElementById('event-' + openId);
     if (initialCard) scrollToOpenCard(initialCard);
   }
+
+  setupCategoryGate();             // 一覧が用意できてから種別の選択画面を出す
 
   // 初期描画が完了したのでローディングを解除して画面を表示
   document.body.classList.add('app-ready');
