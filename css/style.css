@@ -1680,6 +1680,10 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
 
 .seat-list-toggle:hover { color: var(--text); border-color: var(--border-strong); }
 
+/* 展開中は下辺の線を消し、一覧の見出しの上端を仕切り線として使う。
+ * 線を挟むと、その 1 画素の行で下の行の文字が混ざって覗くことがあるため。 */
+.seat-list-block:not(.is-collapsed) .seat-list-toggle { border-bottom-color: transparent; }
+
 .seat-list-chevron { font-size: 10px; transition: transform .2s; }
 .seat-list-block:not(.is-collapsed) .seat-list-chevron { transform: rotate(180deg); }
 .seat-list-block.is-collapsed .seat-list-wrap { display: none; }
@@ -1689,6 +1693,8 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
    * ここの値は、まだ測れていないとき(タブ非表示など)に一覧が伸びきらないための保険。 */
   max-height: 360px;
   overflow-y: auto;
+  /* ボタンの下辺に 1 画素重ねて、境目に隙間ができないようにする */
+  margin-top: -1px;
   border: 1px solid var(--border);
   border-top: none;
   border-radius: 0 0 10px 10px;
@@ -1698,8 +1704,17 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
 .seat-list-block:not(.is-collapsed) .seat-list-toggle { border-radius: 10px 10px 0 0; }
 
 /* 狭い画面用の .data-table { min-width: 400px } を打ち消す。
- * 一覧は横スクロールさせず、幅いっぱいに 3 列を収める。 */
-.seat-list-wrap .seat-list { min-width: 0; width: 100%; }
+ * 一覧は横スクロールさせず、幅いっぱいに 3 列を収める。
+ *
+ * border-collapse も collapse から separate に変える。collapse のままだと
+ * Chromium で th の position: sticky が効かず、見出しが行と一緒にスクロールして
+ * 開閉ボタンとの間に行が覗いて見えてしまう。 */
+.seat-list-wrap .seat-list {
+  min-width: 0;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
 
 /* 見出しはスクロールしても残す(どの列か見失わないように) */
 .seat-list thead th {
@@ -1709,6 +1724,10 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  /* 見出しの背景を上に数 px 伸ばして、開閉ボタンとの継ぎ目を塞ぐ。
+   * sticky の見出しと、その下を流れる行の間には端数分の隙間ができることがあり
+   * (画面倍率が 1.25 倍などの環境で顕著)、そこから行の文字が覗いて見えていた。 */
+  box-shadow: 0 -4px 0 var(--bg-inset);
 }
 
 .seat-list thead th.is-sorted { color: var(--accent-bright); }
