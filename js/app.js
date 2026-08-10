@@ -950,9 +950,20 @@
     syncSeatTabScroll();
   }
 
-  function pollLiveOnce(id) {
-    if (window.__CARTA_DATA_SOURCE__ !== 'api') return;
-    fetch('/api/events/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
+  /* fresh: true でブラウザの HTTP キャッシュを迂回する。
+   * /api/events/:id は進行中でも max-age=10, stale-while-revalidate=100 を返すため、
+   * 素直に fetch するとレベル終了直後の再取得が「まだ前のレベル」の応答をキャッシュから
+   * 返してしまい、何度取り直してもタイマーが 00:00 のまま動かない。
+   * URL にキャッシュ避けのクエリは付けない。全員のレベルがほぼ同時に終わる性質上、
+   * 一意な URL にすると CDN が効かず関数へのアクセスが集中するため。
+   * CDN 側は最大 10 秒古い可能性があるので、呼び出し側で数秒おきに数回試す。 */
+  function pollLiveOnce(id, opts) {
+    if (window.__CARTA_DATA_SOURCE__ !== 'api') return Promise.resolve();
+    var fresh = opts && opts.fresh;
+    return fetch('/api/events/' + encodeURIComponent(id), {
+      headers: { Accept: 'application/json' },
+      cache: fresh ? 'no-store' : 'default'
+    })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         var ev = findEvent(id);
@@ -962,6 +973,44 @@
         updateLivePanel(id);
       })
       .catch(function () {});
+  }
+
+  /* ---------- レベル終了時の追い取得 ----------
+   * ブラインドタイマーが 00:00 になっても、次の通常ポーリング(25秒間隔)まで待つと
+   * その間ずっと 00:00 が表示されたままになる。終了を検知したらすぐ取り直し、
+   * 次のレベルが見えるまで短い間隔で数回だけ追いかける。
+   *
+   * 1 レベルにつき 1 回だけ起動する(levelEndPendingFor)。取得後は Live パネルを
+   * 描き直すため、そこで作られる新しいタイマーも即座に 00:00 を検知してしまい、
+   * 抑止しないと毎秒取得し続けることになる。 */
+
+  var LIVE_END_RETRY_MS = 5000;   // CDN のキャッシュ(最大10秒)が切れる頃に再度試す
+  var LIVE_END_RETRY_MAX = 6;     // 30 秒あきらめずに追う。以降は通常ポーリングに任せる
+  var levelEndRetryTimer = null;
+  var levelEndPendingFor = null;  // 追い取得中のレベル番号(多重起動の抑止)
+
+  function stopLevelEndRetry() {
+    if (levelEndRetryTimer) { clearTimeout(levelEndRetryTimer); levelEndRetryTimer = null; }
+    levelEndPendingFor = null;
+  }
+
+  /* レベル終了を検知したときに呼ぶ。prevIndex は終了したレベルの番号。 */
+  function refetchAfterLevelEnd(id, prevIndex, attempt) {
+    if (levelEndRetryTimer) { clearTimeout(levelEndRetryTimer); levelEndRetryTimer = null; }
+    if (state.openedId !== id || document.hidden) { levelEndPendingFor = null; return; }
+
+    pollLiveOnce(id, { fresh: true }).then(function () {
+      var ev = findEvent(id);
+      if (!ev || state.openedId !== id || ev.status !== 'running') { levelEndPendingFor = null; return; }
+      // レベルが進んだ(番号が変わった / 残り時間が戻った)なら追いかけ終了
+      var live = ev.live || {};
+      var advanced = live.levelIndex !== prevIndex ||
+        (live.endsAt != null && live.endsAt - Date.now() > 1000);
+      if (advanced || attempt >= LIVE_END_RETRY_MAX) { levelEndPendingFor = null; return; }
+      levelEndRetryTimer = setTimeout(function () {
+        refetchAfterLevelEnd(id, prevIndex, attempt + 1);
+      }, LIVE_END_RETRY_MS);
+    });
   }
 
   function startLivePolling(id) {
@@ -980,6 +1029,7 @@
   function stopLivePolling() {
     if (livePollTimer) { clearInterval(livePollTimer); livePollTimer = null; }
     livePollId = null;
+    stopLevelEndRetry();
   }
 
   /* カードの開閉状態を DOM に反映(再描画なし・閉じる用) */
@@ -1436,8 +1486,16 @@
         el.textContent = fmtSec(remaining);
         if (remaining === 0) {
           clearInterval(t);
-          // レベル終了 → 開いている進行中カードなら即時再取得して次レベルへ
-          if (livePollId && state.openedId === livePollId && !document.hidden) pollLiveOnce(livePollId);
+          /* レベル終了 → 通常ポーリング(25秒)を待たずに取り直して次レベルへ。
+           * 同じレベルで既に追い取得中なら何もしない(下の再描画で毎秒走るのを防ぐ)。 */
+          if (livePollId && state.openedId === livePollId && !document.hidden) {
+            var cur = findEvent(livePollId);
+            var idx = cur && cur.live ? cur.live.levelIndex : -1;
+            if (levelEndPendingFor !== idx) {
+              levelEndPendingFor = idx;
+              refetchAfterLevelEnd(livePollId, idx, 1);
+            }
+          }
         }
       }, 1000);
       timers.push(t);
