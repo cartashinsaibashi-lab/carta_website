@@ -367,7 +367,9 @@
       var d = 0;
       if (key === 'player') d = String(a.player).localeCompare(String(b.player), 'ja');
       else if (key === 'chips') d = a.chips - b.chips;
-      else d = a.seat - b.seat;
+      /* Seat は "卓-席" で表示しているので、並びも卓 → 席の順にする。
+       * 席番号だけで並べると 1-9, 2-9, 3-9 … と各卓の同じ席が混ざって読みにくい。 */
+      else d = (a.table - b.table) || (a.seat - b.seat);
       if (d !== 0) return d * dir;
       return (a.table - b.table) || (a.seat - b.seat);
     });
@@ -391,7 +393,9 @@
         ' role="button" tabindex="0" title="Table ' + num(s.table) + ' へ移動">' +
         '<td class="seat-list-player">' + esc(s.player) + '</td>' +
         '<td class="seat-list-chips">' + (s.chips > 0 ? num(s.chips) : '—') + '</td>' +
-        '<td class="seat-list-seat">' + num(s.seat) + '</td>' +
+        /* 卓番号 - 席番号("4-9" = テーブル 4 の 9 番席)。
+         * 席番号だけでは複数卓のときにどの卓の人か分からないため卓番号も出す。 */
+        '<td class="seat-list-seat">' + s.table + '-' + s.seat + '</td>' +
         '</tr>'
       );
     }).join('');
