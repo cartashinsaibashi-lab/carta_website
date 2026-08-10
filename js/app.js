@@ -267,7 +267,7 @@
       liveStat('Entries', num(ev.stats.entries)) +
       liveStat('Remaining Players', num(ev.stats.players)) +
       liveStat('Table', num(lv.tables)) +
-      liveStat('Average Chips', num(ev.stats.avgStack) + ' chips') +
+      liveStat('Average Stack', num(ev.stats.avgStack) + ' chips') +
       liveStat('Total Chips', num(ev.stats.totalChips)) +
       liveStat('Prize Pool', yen(ev.stats.prizePool)) +
       '  </div>' +
