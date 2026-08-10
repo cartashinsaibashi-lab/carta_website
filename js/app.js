@@ -21,7 +21,10 @@
     favOnly: false,                     // お気に入りのみ表示
     openedId: null,
     openedTab: null,                    // 開いているカードで選択中のタブ(再描画をまたいで保持)
-    seatTable: null                     // 座席表で選択中のテーブル番号(ライブ更新をまたいで保持)
+    seatTable: null,                    // 座席表で選択中のテーブル番号(ライブ更新をまたいで保持)
+    /* 着席者一覧の並び順。人を探す用途なので既定は名前の昇順。
+     * ライブ更新のたびに一覧を作り直すため、選んだ並び順はここに持って引き継ぐ。 */
+    seatSort: { key: 'player', dir: 1 }
   };
 
   /* ---------- お気に入り / 申込状態(モックでは localStorage に保存) ----------
@@ -338,9 +341,67 @@
     return (
       '<div class="live-seats">' +
       '<h4 class="live-seats-title">' + esc(title) + '</h4>' +
+      seatListHtml(ev.seats) +
       tabs +
       tables.map(function (t) { return seatTableHtml(t, t.no === active); }).join('') +
       '</div>'
+    );
+  }
+
+  /* ---------- 着席者一覧 ----------
+   * 卓が多いとタブを 1 つずつ開いて人を探すことになるため、卓タブの上に
+   * 全員の一覧を出す。見出しを押すと並び替え、行を押すとその人の卓に切り替わる。 */
+
+  var SEAT_SORT_LABELS = [
+    { key: 'player', label: 'Player' },
+    { key: 'chips', label: 'Chips' },
+    { key: 'seat', label: 'Seat' }
+  ];
+
+  /* state.seatSort に従って並べ替える。同値のときは卓→席で固定し、
+   * ライブ更新のたびに同点の人の順序が入れ替わらないようにする。 */
+  function sortedSeats(seats) {
+    var key = state.seatSort.key;
+    var dir = state.seatSort.dir;
+    return seats.slice().sort(function (a, b) {
+      var d = 0;
+      if (key === 'player') d = String(a.player).localeCompare(String(b.player), 'ja');
+      else if (key === 'chips') d = a.chips - b.chips;
+      else d = a.seat - b.seat;
+      if (d !== 0) return d * dir;
+      return (a.table - b.table) || (a.seat - b.seat);
+    });
+  }
+
+  function seatListHtml(seats) {
+    var head = SEAT_SORT_LABELS.map(function (c) {
+      var on = state.seatSort.key === c.key;
+      var arrow = on ? (state.seatSort.dir > 0 ? ' ▲' : ' ▼') : '';
+      return (
+        '<th class="seat-list-th' + (on ? ' is-sorted' : '') + '" data-sort="' + c.key + '"' +
+        ' role="button" tabindex="0" aria-sort="' +
+        (on ? (state.seatSort.dir > 0 ? 'ascending' : 'descending') : 'none') + '">' +
+        esc(c.label) + arrow + '</th>'
+      );
+    }).join('');
+
+    var rows = sortedSeats(seats).map(function (s) {
+      return (
+        '<tr class="seat-list-row" data-table="' + s.table + '" data-seat="' + s.seat + '"' +
+        ' role="button" tabindex="0" title="Table ' + num(s.table) + ' へ移動">' +
+        '<td class="seat-list-player">' + esc(s.player) + '</td>' +
+        '<td class="seat-list-chips">' + (s.chips > 0 ? num(s.chips) : '—') + '</td>' +
+        '<td class="seat-list-seat">' + num(s.seat) + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    return (
+      '<div class="seat-list-wrap">' +
+      '<table class="data-table seat-list">' +
+      '<thead><tr>' + head + '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '</table></div>'
     );
   }
 
@@ -1068,22 +1129,56 @@
     });
   }
 
-  /* 座席表の卓タブ。ライブ更新でパネルごと差し替わるため、カードではなく
-   * 一覧に 1 つだけ委譲リスナーを置いてバインドが外れないようにする。 */
-  listEl.addEventListener('click', function (e) {
-    var tab = e.target.closest('.seat-tab');
-    if (!tab) return;
-    var wrap = tab.closest('.live-seats');
-    if (!wrap) return;
-    state.seatTable = Number(tab.dataset.table);
+  /* 卓の表示を切り替える(タブ本体と座席図の両方)。卓タブと着席者一覧の行の
+   * どちらからも呼ばれる。再描画は伴わないので、開いているカードの状態は保たれる。 */
+  function activateSeatTable(wrap, tableNo) {
+    state.seatTable = Number(tableNo);
+    var key = String(tableNo);
     wrap.querySelectorAll('.seat-tab').forEach(function (t) {
-      var on = t === tab;
+      var on = t.dataset.table === key;
       t.classList.toggle('is-active', on);
       t.setAttribute('aria-selected', on);
     });
     wrap.querySelectorAll('.seat-table').forEach(function (v) {
-      v.classList.toggle('is-active', v.dataset.tableView === tab.dataset.table);
+      v.classList.toggle('is-active', v.dataset.tableView === key);
     });
+    syncSeatTabScroll();
+  }
+
+  /* 座席表まわりの操作。ライブ更新でパネルごと差し替わるため、カードではなく
+   * 一覧に 1 つだけ委譲リスナーを置いてバインドが外れないようにする。 */
+  listEl.addEventListener('click', function (e) {
+    var wrap = e.target.closest('.live-seats');
+    if (!wrap) return;
+
+    // 卓タブ
+    var tab = e.target.closest('.seat-tab');
+    if (tab) { activateSeatTable(wrap, tab.dataset.table); return; }
+
+    // 着席者一覧の見出し: 同じ列を押したら昇順⇔降順、別の列なら昇順から
+    var th = e.target.closest('.seat-list-th');
+    if (th) {
+      var key = th.dataset.sort;
+      state.seatSort = state.seatSort.key === key
+        ? { key: key, dir: -state.seatSort.dir }
+        : { key: key, dir: 1 };
+      var card = wrap.closest('.event-card');
+      if (card) updateLivePanel(card.dataset.id); // 並べ替えた一覧で描き直す
+      return;
+    }
+
+    // 着席者一覧の行: その人が座っている卓に切り替える
+    var row = e.target.closest('.seat-list-row');
+    if (row) activateSeatTable(wrap, row.dataset.table);
+  });
+
+  /* 一覧の見出し・行はキーボードでも操作できるようにする(role="button" 相当) */
+  listEl.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var hit = e.target.closest('.seat-list-th, .seat-list-row');
+    if (!hit) return;
+    e.preventDefault();
+    hit.click();
   });
 
   /* ---------- 日付・月セレクター ---------- */

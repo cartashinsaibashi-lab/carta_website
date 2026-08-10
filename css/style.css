@@ -1653,6 +1653,42 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
   margin-bottom: 10px;
 }
 
+/* ---------- 着席者一覧 ----------
+ * 卓が多いとタブを 1 つずつ開いて人を探すことになるため、卓タブの上に全員を出す。
+ * 人数が多い(100 人超)ので高さを固定して中だけスクロールさせ、
+ * 座席図が画面外に押し出されないようにする。 */
+.seat-list-wrap {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+/* 狭い画面用の .data-table { min-width: 400px } を打ち消す。
+ * 一覧は横スクロールさせず、幅いっぱいに 3 列を収める。 */
+.seat-list-wrap .seat-list { min-width: 0; width: 100%; }
+
+/* 見出しはスクロールしても残す(どの列か見失わないように) */
+.seat-list thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.seat-list thead th.is-sorted { color: var(--accent-bright); }
+.seat-list thead th:hover { color: var(--text); }
+
+.seat-list-chips, .seat-list-seat { text-align: right; font-variant-numeric: tabular-nums; }
+.seat-list-player { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; width: 60%; }
+
+.seat-list-row { cursor: pointer; }
+.seat-list-row:hover { background: rgba(var(--accent-rgb), 0.10); }
+.seat-list-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
 /* 卓の切り替えタブ(2 卓以上のときだけ出る)。卓数が多くても横スクロールで収める */
 .seat-tabs {
   display: flex;
