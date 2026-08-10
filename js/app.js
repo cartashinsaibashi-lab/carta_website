@@ -140,6 +140,22 @@
     return first ? first.minutes : 0;
   }
 
+  /* ストラクチャー Lv.1 の BB。開始スタックが何 BB 分かの計算に使う。
+   * 一覧の時点ではストラクチャーが空なので 0 を返し、その場合は BB 表記を出さない。 */
+  function firstLevelBB(ev) {
+    var first = (ev.structure || []).find(function (r) { return r.type === 'level'; });
+    return first ? first.bb : 0;
+  }
+
+  /* "10,000 (100BB)"。BB 数はストラクチャー Lv.1 の BB で割った値。
+   * 見出しが "Starting Chips" なので単位の "chips" は重ねない。
+   * 一覧の時点ではストラクチャーが未取得で BB が分からないため、その場合は枚数だけ出す。 */
+  function startingChipsText(ev) {
+    var bb = firstLevelBB(ev);
+    var chips = num(ev.startingStack);
+    return bb > 0 ? chips + ' (' + num(Math.round(ev.startingStack / bb)) + 'BB)' : chips;
+  }
+
   function infoPanel(ev) {
     var mins = levelMinutesOf(ev);
     var rows = [
@@ -148,9 +164,10 @@
       /* Buy-in は subscription.buyin.fee のみを表示する(本体・合計は出さない) */
       ['Buy-in', yen(ev.fee)],
       ['Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None'],
-      ['Starting Stack', num(ev.startingStack) + ' chips'],
+      ['Starting Chips', startingChipsText(ev)],
       ['Level Length', mins ? mins + ' min' : '—'],
-      ['Late Reg', ev.lateReg],
+      /* カードの Reg Close と同じ内容を出す(片方だけ表記が違うと混乱するため) */
+      ['Late Reg', regCloseText(ev) || ev.lateReg || '—'],
       ['Re-entry', ev.reentry],
       ['Game', ev.gameType]
     ];
@@ -176,9 +193,15 @@
         ev.details.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') +
         '</ul>';
     }
-    /* 説明文が未入力の大会(2 割ほどある)では段落ごと出さない */
+    /* 説明文はティッカー(横に流れる 1 行)で出す。長い説明でもカードの高さを取らない。
+     * 文は 1 つだけで、右端から入って左端へ抜けきるまでを 1 周とする。
+     * 短くて収まる説明は流さない(判定と速度は syncTickers が行う)。
+     * 説明文が未入力の大会(2 割ほどある)では要素ごと出さない。 */
     var descHtml = ev.description
-      ? '<p class="event-description">' + esc(ev.description) + '</p>'
+      ? '<div class="event-ticker">' +
+        '<div class="event-ticker-track">' +
+        '<span class="event-ticker-item">' + esc(ev.description) + '</span>' +
+        '</div></div>'
       : '';
     return (
       descHtml +
@@ -219,7 +242,6 @@
   }
 
   function resultsPanel(ev) {
-    var hasBounty = ev.results.some(function (r) { return r.bounty > 0; });
     /* Prize は Prize タブ(GET /v1/event/{id}/payouts)の値に合わせる。
      * 結果一覧(POST /v1/event/{id}/players)が持つ payoutAmount とペイアウト表の
      * 金額が食い違うことがあり、正しいのはペイアウト表のほうなので、順位で引き当てて
@@ -228,7 +250,19 @@
     var payoutByPos = {};
     (ev.payouts || []).forEach(function (p) { payoutByPos[p.pos] = p; });
 
-    var body = ev.results.map(function (r) {
+    /* 表示する順位の範囲。参加者全員(数百人になることもある)を出すと縦に長すぎるため、
+     * 上位 9 位までを基本にする。ただし賞金が 9 位より下まで出る大会では入賞者が
+     * 切れてしまうので、ペイアウト表の最下位まで広げる。
+     * 例) ペイアウトが 6 位まで → 9 位まで表示 / 24 位まで → 24 位まで表示 */
+    var RESULTS_MIN_PLACES = 9;
+    var payoutLast = (ev.payouts || []).reduce(function (m, p) { return Math.max(m, p.pos); }, 0);
+    var lastPlace = Math.max(RESULTS_MIN_PLACES, payoutLast);
+    var shown = ev.results.filter(function (r) { return r.pos <= lastPlace; });
+
+    /* Bounty 列は表示する範囲に賞金首が居るときだけ出す(全員空欄の列を作らない) */
+    var hasBounty = shown.some(function (r) { return r.bounty > 0; });
+
+    var body = shown.map(function (r) {
       var posCls = r.pos === 1 ? ' class="row-winner"' : '';
       var medalCls = r.pos <= 3 ? ' pos-' + r.pos : '';
       var prize = payoutByPos[r.pos] ? prizeLabel(payoutByPos[r.pos]) : yen(r.prize);
@@ -500,6 +534,36 @@
     );
   }
 
+  /* 説明文ティッカーの「流す/流さない」と速度を決める。
+   * 文がコンテナに収まるなら流さない(短い説明が意味もなく動くのを避ける)。
+   * 流す場合は文の長さに比例した時間を与え、どの大会でもだいたい同じ速さ
+   * (約 60px/秒 = 日本語で 1 秒に 4 文字強)で読めるようにする。
+   * 非表示のタブは幅が 0 で測れないため触らない(タブを開いたときに再度呼ばれる)。 */
+  var TICKER_PX_PER_SEC = 60;
+
+  function syncTickers() {
+    listEl.querySelectorAll('.event-ticker').forEach(function (el) {
+      var track = el.querySelector('.event-ticker-track');
+      var item = track && track.firstElementChild;
+      if (!item || !el.clientWidth) return;
+      var boxPx = el.clientWidth;
+      var textPx = item.getBoundingClientRect().width;
+      var scrolling = textPx > boxPx;
+      el.classList.toggle('is-scrolling', scrolling);
+      if (!scrolling) {
+        track.style.animationDuration = '';
+        return;
+      }
+      /* コンテナの右端の外(+boxPx)から、左端の外(-textPx)まで動かす。
+       * 1 周で動く距離はその合計で、一定の速さで割って所要時間を出す。
+       * こうすると説明の長短にかかわらず読む速さが変わらない。 */
+      el.style.setProperty('--ticker-from', boxPx + 'px');
+      el.style.setProperty('--ticker-to', -textPx + 'px');
+      track.style.animationDuration =
+        Math.max(8, Math.round((boxPx + textPx) / TICKER_PX_PER_SEC)) + 's';
+    });
+  }
+
   /* 卓タブの横スクロール位置を選択中の卓に合わせる。
    * ライブ更新でタブ列ごと作り直されるため、描画のたびに呼んで表示位置を復元する。 */
   function syncSeatTabScroll() {
@@ -682,16 +746,22 @@
     return futureOpenPhase(ev);
   }
 
+  /* レジストレーション締切の表記 "17:00 (Lv.8)"(締切時刻 + レイトレジ終了レベル)。
+   * カードの Reg Close 列と Info タブの Late Reg 行で同じ内容を出すため共通化している。
+   * 時刻もレベルも分からない大会では空文字。 */
+  function regCloseText(ev) {
+    var m = /Lv\.?\s*(\d+)/i.exec(ev.lateReg || '');
+    var lv = m ? 'Lv.' + m[1] : '';
+    var t = ev.regCloseTime || '';
+    return t ? (t + (lv ? ' (' + lv + ')' : '')) : lv;
+  }
+
   /* START 行の 2 列目。参照デザイン: "Reg Close 17:00 (Lv.8)"(時刻 + レジクロレベル) */
   function headSecondStat(ev) {
     var mins = levelMinutesOf(ev);
     var minsLabel = mins ? mins + '-min' : '—';
     if (ev.status === 'past') return { k: 'Levels', v: minsLabel };
-    var m = /Lv\.?\s*(\d+)/i.exec(ev.lateReg || '');
-    var lv = m ? 'Lv.' + m[1] : '';
-    var t = ev.regCloseTime || '';
-    var v = t ? (t + (lv ? ' (' + lv + ')' : '')) : (lv || minsLabel);
-    return { k: 'Reg Close', v: v };
+    return { k: 'Reg Close', v: regCloseText(ev) || minsLabel };
   }
 
   /* カード用 Players 表示("現在 / 総数")。
@@ -876,6 +946,7 @@
     startTimers();
     syncSeatTabScroll();
     syncSeatList();
+    syncTickers();
     syncOpenParam();
     prefetchVisibleDetails(); // 表示中カードの詳細をバックグラウンド先読み
   }
@@ -1044,9 +1115,20 @@
     syncSeatList();
   }
 
-  function pollLiveOnce(id) {
-    if (window.__CARTA_DATA_SOURCE__ !== 'api') return;
-    fetch('/api/events/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
+  /* fresh: true でブラウザの HTTP キャッシュを迂回する。
+   * /api/events/:id は進行中でも max-age=10, stale-while-revalidate=100 を返すため、
+   * 素直に fetch するとレベル終了直後の再取得が「まだ前のレベル」の応答をキャッシュから
+   * 返してしまい、何度取り直してもタイマーが 00:00 のまま動かない。
+   * URL にキャッシュ避けのクエリは付けない。全員のレベルがほぼ同時に終わる性質上、
+   * 一意な URL にすると CDN が効かず関数へのアクセスが集中するため。
+   * CDN 側は最大 10 秒古い可能性があるので、呼び出し側で数秒おきに数回試す。 */
+  function pollLiveOnce(id, opts) {
+    if (window.__CARTA_DATA_SOURCE__ !== 'api') return Promise.resolve();
+    var fresh = opts && opts.fresh;
+    return fetch('/api/events/' + encodeURIComponent(id), {
+      headers: { Accept: 'application/json' },
+      cache: fresh ? 'no-store' : 'default'
+    })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         var ev = findEvent(id);
@@ -1056,6 +1138,44 @@
         updateLivePanel(id);
       })
       .catch(function () {});
+  }
+
+  /* ---------- レベル終了時の追い取得 ----------
+   * ブラインドタイマーが 00:00 になっても、次の通常ポーリング(25秒間隔)まで待つと
+   * その間ずっと 00:00 が表示されたままになる。終了を検知したらすぐ取り直し、
+   * 次のレベルが見えるまで短い間隔で数回だけ追いかける。
+   *
+   * 1 レベルにつき 1 回だけ起動する(levelEndPendingFor)。取得後は Live パネルを
+   * 描き直すため、そこで作られる新しいタイマーも即座に 00:00 を検知してしまい、
+   * 抑止しないと毎秒取得し続けることになる。 */
+
+  var LIVE_END_RETRY_MS = 5000;   // CDN のキャッシュ(最大10秒)が切れる頃に再度試す
+  var LIVE_END_RETRY_MAX = 6;     // 30 秒あきらめずに追う。以降は通常ポーリングに任せる
+  var levelEndRetryTimer = null;
+  var levelEndPendingFor = null;  // 追い取得中のレベル番号(多重起動の抑止)
+
+  function stopLevelEndRetry() {
+    if (levelEndRetryTimer) { clearTimeout(levelEndRetryTimer); levelEndRetryTimer = null; }
+    levelEndPendingFor = null;
+  }
+
+  /* レベル終了を検知したときに呼ぶ。prevIndex は終了したレベルの番号。 */
+  function refetchAfterLevelEnd(id, prevIndex, attempt) {
+    if (levelEndRetryTimer) { clearTimeout(levelEndRetryTimer); levelEndRetryTimer = null; }
+    if (state.openedId !== id || document.hidden) { levelEndPendingFor = null; return; }
+
+    pollLiveOnce(id, { fresh: true }).then(function () {
+      var ev = findEvent(id);
+      if (!ev || state.openedId !== id || ev.status !== 'running') { levelEndPendingFor = null; return; }
+      // レベルが進んだ(番号が変わった / 残り時間が戻った)なら追いかけ終了
+      var live = ev.live || {};
+      var advanced = live.levelIndex !== prevIndex ||
+        (live.endsAt != null && live.endsAt - Date.now() > 1000);
+      if (advanced || attempt >= LIVE_END_RETRY_MAX) { levelEndPendingFor = null; return; }
+      levelEndRetryTimer = setTimeout(function () {
+        refetchAfterLevelEnd(id, prevIndex, attempt + 1);
+      }, LIVE_END_RETRY_MS);
+    });
   }
 
   function startLivePolling(id) {
@@ -1074,6 +1194,7 @@
   function stopLivePolling() {
     if (livePollTimer) { clearInterval(livePollTimer); livePollTimer = null; }
     livePollId = null;
+    stopLevelEndRetry();
   }
 
   /* カードの開閉状態を DOM に反映(再描画なし・閉じる用) */
@@ -1139,6 +1260,7 @@
           card.querySelectorAll('.detail-panel').forEach(function (p) {
             p.classList.toggle('is-active', p.dataset.panel === key);
           });
+          syncTickers(); // 非表示のうちは幅が測れないので、表示された時点で測り直す
         });
       });
 
@@ -1575,8 +1697,16 @@
         el.textContent = fmtSec(remaining);
         if (remaining === 0) {
           clearInterval(t);
-          // レベル終了 → 開いている進行中カードなら即時再取得して次レベルへ
-          if (livePollId && state.openedId === livePollId && !document.hidden) pollLiveOnce(livePollId);
+          /* レベル終了 → 通常ポーリング(25秒)を待たずに取り直して次レベルへ。
+           * 同じレベルで既に追い取得中なら何もしない(下の再描画で毎秒走るのを防ぐ)。 */
+          if (livePollId && state.openedId === livePollId && !document.hidden) {
+            var cur = findEvent(livePollId);
+            var idx = cur && cur.live ? cur.live.levelIndex : -1;
+            if (levelEndPendingFor !== idx) {
+              levelEndPendingFor = idx;
+              refetchAfterLevelEnd(livePollId, idx, 1);
+            }
+          }
         }
       }, 1000);
       timers.push(t);
