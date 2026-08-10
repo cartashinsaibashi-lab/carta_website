@@ -1300,6 +1300,23 @@
     syncSeatTabScroll();
   }
 
+  /* 座席図が見える位置まで画面をスクロールする。
+   * 着席者一覧から人を選んだときは、座席図が一覧の下にあって画面外なことが多く、
+   * 卓を切り替えても何も起きていないように見えるため。
+   * 卓タブがあればそこを頭に合わせる(どの卓を見ているかが分かるように)。
+   * 固定表示されるヘッダーとフィルタバーの下に来るよう、その高さ分を差し引く。 */
+  function scrollSeatViewIntoView(wrap) {
+    var target = wrap.querySelector('.seat-tabs') ||
+      wrap.querySelector('.seat-table.is-active');
+    if (!target) return;
+    var header = document.querySelector('.site-header');
+    var bar = document.querySelector('.filter-bar');
+    var stuck = (header ? header.offsetHeight : 0) + (bar ? bar.offsetHeight : 0) + 12;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var y = target.getBoundingClientRect().top + window.pageYOffset - stuck;
+    window.scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' });
+  }
+
   /* 座席表まわりの操作。ライブ更新でパネルごと差し替わるため、カードではなく
    * 一覧に 1 つだけ委譲リスナーを置いてバインドが外れないようにする。 */
   listEl.addEventListener('click', function (e) {
@@ -1333,9 +1350,12 @@
       return;
     }
 
-    // 着席者一覧の行: その人が座っている卓に切り替える
+    // 着席者一覧の行: その人が座っている卓に切り替えて、座席図まで移動する
     var row = e.target.closest('.seat-list-row');
-    if (row) activateSeatTable(wrap, row.dataset.table);
+    if (row) {
+      activateSeatTable(wrap, row.dataset.table);
+      scrollSeatViewIntoView(wrap);
+    }
   });
 
   /* 一覧の見出し・行はキーボードでも操作できるようにする(role="button" 相当) */
