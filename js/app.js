@@ -1643,13 +1643,46 @@
 
     gate.hidden = false;
     document.body.classList.add('gate-open'); // 背後をスクロールさせない
+
+    var picking = false; // 連打で演出が二重に走らないようにする
     gate.addEventListener('click', function (e) {
       var btn = e.target.closest('.gate-item');
-      if (!btn) return;
+      if (!btn || picking) return;
+      picking = true;
+      /* 先に種別を切り替える。テーマ(配色)もここで変わるので、
+       * 選択後の演出は選んだシリーズの色で見える。 */
       selectCategory(btn.dataset.category);
-      gate.hidden = true;
-      document.body.classList.remove('gate-open');
+      playGateExit(gate, btn);
     });
+  }
+
+  /* 選択後の演出。
+   *   1) 選択肢と見出しを消し、選んだシリーズのロゴだけを中央に大きく出す
+   *   2) 少し見せてから、全体をうっすら消して一覧を表に出す
+   * 配色は selectCategory() で既に切り替わっているため、演出も選んだ色になる。
+   * 動きを減らす設定では演出せずに閉じる。 */
+  var GATE_HOLD_MS = 900;   // ロゴを見せている時間
+  var GATE_FADE_MS = 620;   // 消えていく時間(CSS の transition と揃える)
+
+  function playGateExit(gate, picked) {
+    var close = function () {
+      gate.hidden = true;
+      gate.classList.remove('is-picking', 'is-leaving');
+      document.body.classList.remove('gate-open');
+    };
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { close(); return; }
+
+    // 中央に出すロゴは、押された選択肢のアイコンをそのまま使う
+    var splash = gate.querySelector('.gate-splash-icon');
+    var icon = picked.querySelector('.gate-icon');
+    if (splash && icon) splash.src = icon.src;
+
+    gate.classList.add('is-picking');
+    setTimeout(function () {
+      gate.classList.add('is-leaving');
+      setTimeout(close, GATE_FADE_MS);
+    }, GATE_HOLD_MS);
   }
 
   document.getElementById('favFilter').addEventListener('click', function () {
