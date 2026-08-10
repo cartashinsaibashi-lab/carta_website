@@ -173,15 +173,13 @@
         '</ul>';
     }
     /* 説明文はティッカー(横に流れる 1 行)で出す。長い説明でもカードの高さを取らない。
-     * 途切れずにループさせるため同じ文を 2 つ並べ、1 つ分だけ左に流す。
-     * 2 つ目は読み上げに重複して拾われないよう aria-hidden にする。
+     * 文は 1 つだけで、右端から入って左端へ抜けきるまでを 1 周とする。
      * 短くて収まる説明は流さない(判定と速度は syncTickers が行う)。
      * 説明文が未入力の大会(2 割ほどある)では要素ごと出さない。 */
     var descHtml = ev.description
       ? '<div class="event-ticker">' +
         '<div class="event-ticker-track">' +
         '<span class="event-ticker-item">' + esc(ev.description) + '</span>' +
-        '<span class="event-ticker-item" aria-hidden="true">' + esc(ev.description) + '</span>' +
         '</div></div>'
       : '';
     return (
@@ -428,13 +426,21 @@
       var track = el.querySelector('.event-ticker-track');
       var item = track && track.firstElementChild;
       if (!item || !el.clientWidth) return;
-      var scrolling = item.getBoundingClientRect().width > el.clientWidth;
+      var boxPx = el.clientWidth;
+      var textPx = item.getBoundingClientRect().width;
+      var scrolling = textPx > boxPx;
       el.classList.toggle('is-scrolling', scrolling);
-      if (!scrolling) { track.style.animationDuration = ''; return; }
-      /* 1 周で流れる距離 = 複製 1 つ分。複製の後ろの余白は is-scrolling が付いて
-       * はじめて入るため、クラスを付けたあとに測り直す。 */
-      var loopPx = item.getBoundingClientRect().width;
-      track.style.animationDuration = Math.max(8, Math.round(loopPx / TICKER_PX_PER_SEC)) + 's';
+      if (!scrolling) {
+        track.style.animationDuration = '';
+        return;
+      }
+      /* コンテナの右端の外(+boxPx)から、左端の外(-textPx)まで動かす。
+       * 1 周で動く距離はその合計で、一定の速さで割って所要時間を出す。
+       * こうすると説明の長短にかかわらず読む速さが変わらない。 */
+      el.style.setProperty('--ticker-from', boxPx + 'px');
+      el.style.setProperty('--ticker-to', -textPx + 'px');
+      track.style.animationDuration =
+        Math.max(8, Math.round((boxPx + textPx) / TICKER_PX_PER_SEC)) + 's';
     });
   }
 
