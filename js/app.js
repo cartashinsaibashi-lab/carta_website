@@ -216,14 +216,23 @@
 
   function resultsPanel(ev) {
     var hasBounty = ev.results.some(function (r) { return r.bounty > 0; });
+    /* Prize は Prize タブ(GET /v1/event/{id}/payouts)の値に合わせる。
+     * 結果一覧(POST /v1/event/{id}/players)が持つ payoutAmount とペイアウト表の
+     * 金額が食い違うことがあり、正しいのはペイアウト表のほうなので、順位で引き当てて
+     * Prize タブと同じ表記(prizeLabel)を使う。
+     * ペイアウト表に無い順位(賞金圏外など)は結果一覧側の値にフォールバックする。 */
+    var payoutByPos = {};
+    (ev.payouts || []).forEach(function (p) { payoutByPos[p.pos] = p; });
+
     var body = ev.results.map(function (r) {
       var posCls = r.pos === 1 ? ' class="row-winner"' : '';
       var medalCls = r.pos <= 3 ? ' pos-' + r.pos : '';
+      var prize = payoutByPos[r.pos] ? prizeLabel(payoutByPos[r.pos]) : yen(r.prize);
       return (
         '<tr' + posCls + '>' +
         '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + r.pos + '</span></td>' +
         '<td class="col-player">' + esc(r.player) + '</td>' +
-        '<td class="col-prize">' + yen(r.prize) + '</td>' +
+        '<td class="col-prize">' + prize + '</td>' +
         (hasBounty ? '<td class="col-prize">' + (r.bounty ? yen(r.bounty) : '—') + '</td>' : '') +
         '</tr>'
       );
@@ -440,14 +449,19 @@
    * Prize 列は description(現物賞品: "4 Tickets" / "1E × 2,000P")だけを表示する。
    * description が無い大会(現金のみ)は従来どおり金額を出す。
    * Share 列は配分率を持つ大会だけ出す(サテライトは percentage=0 のため列ごと省く)。 */
+  /* ペイアウト 1 行分の Prize 表記。現物賞品(description: "4 Tickets" 等)があれば
+   * それを、無ければ金額を出す。Prize タブと Results タブで同じ表記にするため、
+   * 両方からこの関数を呼ぶ。 */
+  function prizeLabel(p) {
+    return p.description ? esc(p.description) : (p.amount ? yen(p.amount) : '—');
+  }
+
   function payoutTable(payouts) {
     var hasShare = payouts.some(function (p) { return p.pct > 0; });
 
     var rows = payouts.map(function (p) {
       var posCls = p.pos === 1 ? ' class="row-winner"' : '';
-      var prize = p.description
-        ? esc(p.description)
-        : (p.amount ? yen(p.amount) : '—');
+      var prize = prizeLabel(p);
       return (
         '<tr' + posCls + '>' +
         placeCell(p) +
