@@ -21,7 +21,11 @@
     favOnly: false,                     // お気に入りのみ表示
     openedId: null,
     openedTab: null,                    // 開いているカードで選択中のタブ(再描画をまたいで保持)
-    seatTable: null                     // 座席表で選択中のテーブル番号(ライブ更新をまたいで保持)
+    seatTable: null,                    // 座席表で選択中のテーブル番号(ライブ更新をまたいで保持)
+    /* 着席者一覧の並び順。人を探す用途なので既定は名前の昇順。
+     * ライブ更新のたびに一覧を作り直すため、選んだ並び順はここに持って引き継ぐ。 */
+    seatSort: { key: 'player', dir: 1 },
+    seatListOpen: true                  // 着席者一覧の開閉(同じくライブ更新をまたいで保持)
   };
 
   /* ---------- お気に入り / 申込状態(モックでは localStorage に保存) ----------
@@ -372,10 +376,98 @@
     return (
       '<div class="live-seats">' +
       '<h4 class="live-seats-title">' + esc(title) + '</h4>' +
+      seatListHtml(ev.seats) +
       tabs +
       tables.map(function (t) { return seatTableHtml(t, t.no === active); }).join('') +
       '</div>'
     );
+  }
+
+  /* ---------- 着席者一覧 ----------
+   * 卓が多いとタブを 1 つずつ開いて人を探すことになるため、卓タブの上に
+   * 全員の一覧を出す。見出しを押すと並び替え、行を押すとその人の卓に切り替わる。 */
+
+  var SEAT_SORT_LABELS = [
+    { key: 'player', label: 'Player' },
+    { key: 'chips', label: 'Chips' },
+    { key: 'seat', label: 'Seat' }
+  ];
+
+  /* state.seatSort に従って並べ替える。同値のときは卓→席で固定し、
+   * ライブ更新のたびに同点の人の順序が入れ替わらないようにする。 */
+  function sortedSeats(seats) {
+    var key = state.seatSort.key;
+    var dir = state.seatSort.dir;
+    return seats.slice().sort(function (a, b) {
+      var d = 0;
+      if (key === 'player') d = String(a.player).localeCompare(String(b.player), 'ja');
+      else if (key === 'chips') d = a.chips - b.chips;
+      /* Seat は "卓-席" で表示しているので、並びも卓 → 席の順にする。
+       * 席番号だけで並べると 1-9, 2-9, 3-9 … と各卓の同じ席が混ざって読みにくい。 */
+      else d = (a.table - b.table) || (a.seat - b.seat);
+      if (d !== 0) return d * dir;
+      return (a.table - b.table) || (a.seat - b.seat);
+    });
+  }
+
+  function seatListHtml(seats) {
+    var head = SEAT_SORT_LABELS.map(function (c) {
+      var on = state.seatSort.key === c.key;
+      var arrow = on ? (state.seatSort.dir > 0 ? ' ▲' : ' ▼') : '';
+      return (
+        '<th class="seat-list-th' + (on ? ' is-sorted' : '') + '" data-sort="' + c.key + '"' +
+        ' role="button" tabindex="0" aria-sort="' +
+        (on ? (state.seatSort.dir > 0 ? 'ascending' : 'descending') : 'none') + '">' +
+        esc(c.label) + arrow + '</th>'
+      );
+    }).join('');
+
+    var rows = sortedSeats(seats).map(function (s) {
+      return (
+        '<tr class="seat-list-row" data-table="' + s.table + '" data-seat="' + s.seat + '"' +
+        ' role="button" tabindex="0" title="Table ' + num(s.table) + ' へ移動">' +
+        '<td class="seat-list-player">' + esc(s.player) + '</td>' +
+        '<td class="seat-list-chips">' + (s.chips > 0 ? num(s.chips) : '—') + '</td>' +
+        /* 卓番号 - 席番号("4-9" = テーブル 4 の 9 番席)。
+         * 席番号だけでは複数卓のときにどの卓の人か分からないため卓番号も出す。 */
+        '<td class="seat-list-seat">' + s.table + '-' + s.seat + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    /* 見出しを押すと一覧ごと開閉できる(座席図だけ見たいときに畳める)。
+     * 開閉状態は state に持たせ、ライブ更新で作り直されても保たれるようにする。 */
+    var open = state.seatListOpen;
+    return (
+      '<div class="seat-list-block' + (open ? '' : ' is-collapsed') + '">' +
+      '<button type="button" class="seat-list-toggle" aria-expanded="' + open + '">' +
+      '<span class="seat-list-caption">Players (' + num(seats.length) + ')</span>' +
+      '<span class="seat-list-chevron" aria-hidden="true">▾</span>' +
+      '</button>' +
+      '<div class="seat-list-wrap">' +
+      '<table class="data-table seat-list">' +
+      '<thead><tr>' + head + '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '</table></div>' +
+      '</div>'
+    );
+  }
+
+  /* 一覧の高さを「見出し + SEAT_LIST_ROWS 人分」に合わせる。
+   * 高さを px で決め打ちすると、画面幅で文字サイズが変わったときに
+   * 見える人数がずれるため、実際の行の高さを測って決める。 */
+  var SEAT_LIST_ROWS = 9;
+
+  function syncSeatList() {
+    listEl.querySelectorAll('.seat-list-wrap').forEach(function (wrap) {
+      var head = wrap.querySelector('thead');
+      var rows = wrap.querySelectorAll('tbody tr');
+      if (!head || !rows.length || !wrap.clientWidth) return;
+      if (rows.length <= SEAT_LIST_ROWS) { wrap.style.maxHeight = ''; return; }
+      var h = head.getBoundingClientRect().height;
+      for (var i = 0; i < SEAT_LIST_ROWS; i++) h += rows[i].getBoundingClientRect().height;
+      wrap.style.maxHeight = Math.ceil(h) + 'px';
+    });
   }
 
   /* seats[] をテーブル番号ごとにまとめる(卓番号の昇順) */
@@ -853,6 +945,7 @@
     bindCards();
     startTimers();
     syncSeatTabScroll();
+    syncSeatList();
     syncTickers();
     syncOpenParam();
     prefetchVisibleDetails(); // 表示中カードの詳細をバックグラウンド先読み
@@ -1019,6 +1112,7 @@
     clearTimers();
     startTimers(); // 差し替えた data-timer にカウントダウンを付け直す
     syncSeatTabScroll();
+    syncSeatList();
   }
 
   /* fresh: true でブラウザの HTTP キャッシュを迂回する。
@@ -1190,22 +1284,87 @@
     });
   }
 
-  /* 座席表の卓タブ。ライブ更新でパネルごと差し替わるため、カードではなく
-   * 一覧に 1 つだけ委譲リスナーを置いてバインドが外れないようにする。 */
-  listEl.addEventListener('click', function (e) {
-    var tab = e.target.closest('.seat-tab');
-    if (!tab) return;
-    var wrap = tab.closest('.live-seats');
-    if (!wrap) return;
-    state.seatTable = Number(tab.dataset.table);
+  /* 卓の表示を切り替える(タブ本体と座席図の両方)。卓タブと着席者一覧の行の
+   * どちらからも呼ばれる。再描画は伴わないので、開いているカードの状態は保たれる。 */
+  function activateSeatTable(wrap, tableNo) {
+    state.seatTable = Number(tableNo);
+    var key = String(tableNo);
     wrap.querySelectorAll('.seat-tab').forEach(function (t) {
-      var on = t === tab;
+      var on = t.dataset.table === key;
       t.classList.toggle('is-active', on);
       t.setAttribute('aria-selected', on);
     });
     wrap.querySelectorAll('.seat-table').forEach(function (v) {
-      v.classList.toggle('is-active', v.dataset.tableView === tab.dataset.table);
+      v.classList.toggle('is-active', v.dataset.tableView === key);
     });
+    syncSeatTabScroll();
+  }
+
+  /* 座席図が見える位置まで画面をスクロールする。
+   * 着席者一覧から人を選んだときは、座席図が一覧の下にあって画面外なことが多く、
+   * 卓を切り替えても何も起きていないように見えるため。
+   * 卓タブがあればそこを頭に合わせる(どの卓を見ているかが分かるように)。
+   * 固定表示されるヘッダーとフィルタバーの下に来るよう、その高さ分を差し引く。 */
+  function scrollSeatViewIntoView(wrap) {
+    var target = wrap.querySelector('.seat-tabs') ||
+      wrap.querySelector('.seat-table.is-active');
+    if (!target) return;
+    var header = document.querySelector('.site-header');
+    var bar = document.querySelector('.filter-bar');
+    var stuck = (header ? header.offsetHeight : 0) + (bar ? bar.offsetHeight : 0) + 12;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var y = target.getBoundingClientRect().top + window.pageYOffset - stuck;
+    window.scrollTo({ top: Math.max(0, y), behavior: reduce ? 'auto' : 'smooth' });
+  }
+
+  /* 座席表まわりの操作。ライブ更新でパネルごと差し替わるため、カードではなく
+   * 一覧に 1 つだけ委譲リスナーを置いてバインドが外れないようにする。 */
+  listEl.addEventListener('click', function (e) {
+    var wrap = e.target.closest('.live-seats');
+    if (!wrap) return;
+
+    // 着席者一覧の開閉。再描画せずクラスの付け外しだけで済ませる
+    var toggle = e.target.closest('.seat-list-toggle');
+    if (toggle) {
+      state.seatListOpen = !state.seatListOpen;
+      var block = toggle.closest('.seat-list-block');
+      block.classList.toggle('is-collapsed', !state.seatListOpen);
+      toggle.setAttribute('aria-expanded', state.seatListOpen);
+      if (state.seatListOpen) syncSeatList(); // 畳んでいる間は測れないので開いた時点で測る
+      return;
+    }
+
+    // 卓タブ
+    var tab = e.target.closest('.seat-tab');
+    if (tab) { activateSeatTable(wrap, tab.dataset.table); return; }
+
+    // 着席者一覧の見出し: 同じ列を押したら昇順⇔降順、別の列なら昇順から
+    var th = e.target.closest('.seat-list-th');
+    if (th) {
+      var key = th.dataset.sort;
+      state.seatSort = state.seatSort.key === key
+        ? { key: key, dir: -state.seatSort.dir }
+        : { key: key, dir: 1 };
+      var card = wrap.closest('.event-card');
+      if (card) updateLivePanel(card.dataset.id); // 並べ替えた一覧で描き直す
+      return;
+    }
+
+    // 着席者一覧の行: その人が座っている卓に切り替えて、座席図まで移動する
+    var row = e.target.closest('.seat-list-row');
+    if (row) {
+      activateSeatTable(wrap, row.dataset.table);
+      scrollSeatViewIntoView(wrap);
+    }
+  });
+
+  /* 一覧の見出し・行はキーボードでも操作できるようにする(role="button" 相当) */
+  listEl.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var hit = e.target.closest('.seat-list-th, .seat-list-row');
+    if (!hit) return;
+    e.preventDefault();
+    hit.click();
   });
 
   /* ---------- 日付・月セレクター ---------- */
