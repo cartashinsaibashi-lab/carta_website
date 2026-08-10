@@ -262,6 +262,13 @@
   function livePanel(ev) {
     var lv = ev.live;
     var seatsHtml = seatingHtml(ev);
+    /* 次の休憩は「あと何分か」が知りたい情報なので、休憩の長さではなく
+     * 休憩開始までのカウントダウンを出す。breakAt(絶対時刻)を持たない場合
+     * (ストラクチャーに休憩が無い等)は行ごと省く。 */
+    var breakHtml = lv.breakAt
+      ? '<br>Next break in <span class="live-break-countdown" data-break-timer data-ends-at="' +
+        lv.breakAt + '">' + esc(fmtCountdown(lv.breakAt - Date.now())) + '</span>'
+      : '';
     return (
       '<div class="live-board">' +
       '  <div class="live-clock">' +
@@ -270,7 +277,7 @@
       (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '') + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
       '    <div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
       '      <span class="live-ante">ante ' + num(lv.ante) + '</span></div>' +
-      '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + '<br>Next break ' + esc(lv.nextBreak) + '</div>' +
+      '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + breakHtml + '</div>' +
       '  </div>' +
       '  <div class="live-stats">' +
       liveStat('Entries', num(ev.stats.entries)) +
@@ -1434,6 +1441,17 @@
         }
       }, 1000);
       timers.push(t);
+    });
+
+    /* 次の休憩までのカウントダウン。レベルの残り時間と違って 1 時間を超えることが
+     * あるため、fmtSec(MM:SS)ではなく fmtCountdown(h:mm:ss)で表示する。
+     * 0 まで来たらそのまま止める。次のライブポーリングで新しい breakAt に差し替わる。 */
+    listEl.querySelectorAll('[data-break-timer]').forEach(function (el) {
+      var endsAt = parseInt(el.dataset.endsAt, 10);
+      if (!isFinite(endsAt)) return;
+      var tick = function () { el.textContent = fmtCountdown(endsAt - Date.now()); };
+      tick();
+      timers.push(setInterval(tick, 1000));
     });
   }
 
