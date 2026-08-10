@@ -1661,28 +1661,60 @@
    *   2) 少し見せてから、全体をうっすら消して一覧を表に出す
    * 配色は selectCategory() で既に切り替わっているため、演出も選んだ色になる。
    * 動きを減らす設定では演出せずに閉じる。 */
-  var GATE_HOLD_MS = 900;   // ロゴを見せている時間
-  var GATE_FADE_MS = 620;   // 消えていく時間(CSS の transition と揃える)
+  var GATE_HOLD_MS = 800;   // ロゴを中央で見せている時間
+  var GATE_FLY_MS = 850;    // 右上へ飛んで消えるまで(CSS の transition と揃える)
 
   function playGateExit(gate, picked) {
+    var splash = gate.querySelector('.gate-splash-icon');
     var close = function () {
       gate.hidden = true;
       gate.classList.remove('is-picking', 'is-leaving');
       document.body.classList.remove('gate-open');
+      if (splash) { splash.classList.remove('is-flying'); splash.style.transform = ''; }
     };
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) { close(); return; }
 
     // 中央に出すロゴは、押された選択肢のアイコンをそのまま使う
-    var splash = gate.querySelector('.gate-splash-icon');
     var icon = picked.querySelector('.gate-icon');
     if (splash && icon) splash.src = icon.src;
 
     gate.classList.add('is-picking');
     setTimeout(function () {
-      gate.classList.add('is-leaving');
-      setTimeout(close, GATE_FADE_MS);
+      flyLogoToHeaderTab(gate, splash, picked.dataset.category, close);
     }, GATE_HOLD_MS);
+  }
+
+  /* 中央のロゴを、ヘッダー右上にある同じシリーズのタブまで飛ばしながら消す。
+   * 「右上を押せば切り替えられる」と気づいてもらうための目線誘導。
+   * 背景だけ先に透明にして一覧を見せ、ロゴは飛び切ってから消える。 */
+  function flyLogoToHeaderTab(gate, splash, category, done) {
+    gate.classList.add('is-leaving');
+    var target = document.querySelector(
+      '.category-tab[data-category="' + category + '"] .category-tab-icon');
+    if (!splash || !target) { setTimeout(done, GATE_FLY_MS); return; }
+
+    var from = splash.getBoundingClientRect();
+    var to = target.getBoundingClientRect();
+    /* 拡大(scale)は中心を動かさないので、いまの中心とタブの中心の差がそのまま移動量になる。
+     * 縮小率はレイアウト上の大きさ(offsetWidth)に対して求める。 */
+    var dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+    var dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+    var scale = to.width / (splash.offsetWidth || to.width);
+
+    splash.classList.add('is-flying');
+    // 直前の拡大が確定してから飛ばす(同じフレームで書き換えると transition が起きない)
+    requestAnimationFrame(function () {
+      splash.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
+    });
+
+    // 着地するタブを軽く光らせて、押せる場所だと分かるようにする
+    var tab = target.closest('.category-tab');
+    if (tab) {
+      tab.classList.add('is-hinted');
+      setTimeout(function () { tab.classList.remove('is-hinted'); }, 1800);
+    }
+    setTimeout(done, GATE_FLY_MS);
   }
 
   document.getElementById('favFilter').addEventListener('click', function () {
