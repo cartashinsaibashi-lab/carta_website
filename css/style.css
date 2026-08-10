@@ -1283,8 +1283,6 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px);
           mask-image: linear-gradient(90deg, transparent, #000 16px);
 }
-/* 読み終わる前に流れていくのを防ぐ。触れている / ポインタを乗せている間は止める */
-.event-ticker.is-scrolling:hover .event-ticker-track { animation-play-state: paused; }
 
 /* 収まるときは複製を出さない(同じ文が 2 つ見えてしまうため) */
 .event-ticker:not(.is-scrolling) .event-ticker-item + .event-ticker-item { display: none; }
