@@ -1657,13 +1657,45 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
  * 卓が多いとタブを 1 つずつ開いて人を探すことになるため、卓タブの上に全員を出す。
  * 人数が多い(100 人超)ので高さを固定して中だけスクロールさせ、
  * 座席図が画面外に押し出されないようにする。 */
-.seat-list-wrap {
-  max-height: 220px;
-  overflow-y: auto;
+.seat-list-block { margin-bottom: 12px; }
+
+/* 一覧の開閉ボタン。見出し全体が押せる */
+.seat-list-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+  padding: 7px 12px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 10px;
-  margin-bottom: 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
 }
+
+.seat-list-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+
+.seat-list-chevron { font-size: 10px; transition: transform .2s; }
+.seat-list-block:not(.is-collapsed) .seat-list-chevron { transform: rotate(180deg); }
+.seat-list-block.is-collapsed .seat-list-wrap { display: none; }
+
+.seat-list-wrap {
+  /* 実際の高さは app.js が「見出し + 9 人分」に合わせて指定する。
+   * ここの値は、まだ測れていないとき(タブ非表示など)に一覧が伸びきらないための保険。 */
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+}
+
+/* 開閉ボタンと一覧が 1 つの箱に見えるよう、間の角を落とす */
+.seat-list-block:not(.is-collapsed) .seat-list-toggle { border-radius: 10px 10px 0 0; }
 
 /* 狭い画面用の .data-table { min-width: 400px } を打ち消す。
  * 一覧は横スクロールさせず、幅いっぱいに 3 列を収める。 */

@@ -24,7 +24,8 @@
     seatTable: null,                    // 座席表で選択中のテーブル番号(ライブ更新をまたいで保持)
     /* 着席者一覧の並び順。人を探す用途なので既定は名前の昇順。
      * ライブ更新のたびに一覧を作り直すため、選んだ並び順はここに持って引き継ぐ。 */
-    seatSort: { key: 'player', dir: 1 }
+    seatSort: { key: 'player', dir: 1 },
+    seatListOpen: true                  // 着席者一覧の開閉(同じくライブ更新をまたいで保持)
   };
 
   /* ---------- お気に入り / 申込状態(モックでは localStorage に保存) ----------
@@ -400,13 +401,39 @@
       );
     }).join('');
 
+    /* 見出しを押すと一覧ごと開閉できる(座席図だけ見たいときに畳める)。
+     * 開閉状態は state に持たせ、ライブ更新で作り直されても保たれるようにする。 */
+    var open = state.seatListOpen;
     return (
+      '<div class="seat-list-block' + (open ? '' : ' is-collapsed') + '">' +
+      '<button type="button" class="seat-list-toggle" aria-expanded="' + open + '">' +
+      '<span class="seat-list-caption">Players (' + num(seats.length) + ')</span>' +
+      '<span class="seat-list-chevron" aria-hidden="true">▾</span>' +
+      '</button>' +
       '<div class="seat-list-wrap">' +
       '<table class="data-table seat-list">' +
       '<thead><tr>' + head + '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
-      '</table></div>'
+      '</table></div>' +
+      '</div>'
     );
+  }
+
+  /* 一覧の高さを「見出し + SEAT_LIST_ROWS 人分」に合わせる。
+   * 高さを px で決め打ちすると、画面幅で文字サイズが変わったときに
+   * 見える人数がずれるため、実際の行の高さを測って決める。 */
+  var SEAT_LIST_ROWS = 9;
+
+  function syncSeatList() {
+    listEl.querySelectorAll('.seat-list-wrap').forEach(function (wrap) {
+      var head = wrap.querySelector('thead');
+      var rows = wrap.querySelectorAll('tbody tr');
+      if (!head || !rows.length || !wrap.clientWidth) return;
+      if (rows.length <= SEAT_LIST_ROWS) { wrap.style.maxHeight = ''; return; }
+      var h = head.getBoundingClientRect().height;
+      for (var i = 0; i < SEAT_LIST_ROWS; i++) h += rows[i].getBoundingClientRect().height;
+      wrap.style.maxHeight = Math.ceil(h) + 'px';
+    });
   }
 
   /* seats[] をテーブル番号ごとにまとめる(卓番号の昇順) */
@@ -848,6 +875,7 @@
     bindCards();
     startTimers();
     syncSeatTabScroll();
+    syncSeatList();
     syncOpenParam();
     prefetchVisibleDetails(); // 表示中カードの詳細をバックグラウンド先読み
   }
@@ -1013,6 +1041,7 @@
     clearTimers();
     startTimers(); // 差し替えた data-timer にカウントダウンを付け直す
     syncSeatTabScroll();
+    syncSeatList();
   }
 
   function pollLiveOnce(id) {
@@ -1154,6 +1183,17 @@
   listEl.addEventListener('click', function (e) {
     var wrap = e.target.closest('.live-seats');
     if (!wrap) return;
+
+    // 着席者一覧の開閉。再描画せずクラスの付け外しだけで済ませる
+    var toggle = e.target.closest('.seat-list-toggle');
+    if (toggle) {
+      state.seatListOpen = !state.seatListOpen;
+      var block = toggle.closest('.seat-list-block');
+      block.classList.toggle('is-collapsed', !state.seatListOpen);
+      toggle.setAttribute('aria-expanded', state.seatListOpen);
+      if (state.seatListOpen) syncSeatList(); // 畳んでいる間は測れないので開いた時点で測る
+      return;
+    }
 
     // 卓タブ
     var tab = e.target.closest('.seat-tab');
