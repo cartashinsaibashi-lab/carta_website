@@ -173,6 +173,18 @@ function buildLive(ev, levels) {
     if (next && nextBreak) break;
   }
 
+  // 次の休憩が始まる絶対時刻(ms epoch)。
+  // 現在レベルの終了時刻に、そこから休憩までの各レベルの長さを足していく。
+  // endsAt と同じく絶対時刻で渡し、クライアントが (breakAt - now) で毎秒計算する。
+  let breakAt = null;
+  if (endsAt != null) {
+    let ms = endsAt;
+    for (let i = pos + 1; i < arr.length; i++) {
+      if (isBreak(arr[i])) { breakAt = ms; break; }
+      ms += num(arr[i].minutes) * 60000;
+    }
+  }
+
   return {
     levelIndex: idx,
     sb: cur ? num(cur.smallBlind) : 0,
@@ -183,6 +195,7 @@ function buildLive(ev, levels) {
 
     nextLevel: next ? `SB ${num(next.smallBlind)} / BB ${num(next.bigBlind)}` : '',
     nextBreak: nextBreak ? `${num(nextBreak.minutes)} min break` : '',
+    breakAt: breakAt, // 次の休憩開始の絶対時刻(ms epoch)。無ければ null
     tables: num(ev.stats && ev.stats.totalTables),
   };
 }
