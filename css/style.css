@@ -1258,11 +1258,44 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 
 /* ---------- 大会情報パネル ---------- */
 
-.event-description {
+/* 大会の説明文(ティッカー)。長い説明でもカードの高さを取らずに全文を流す。 */
+.event-ticker {
+  overflow: hidden;
+  margin-bottom: 18px;
   color: var(--text-dim);
   font-size: 14px;
-  margin-bottom: 18px;
-  max-width: 760px;
+}
+
+.event-ticker-track {
+  display: flex;
+  width: max-content;
+}
+
+.event-ticker-item { white-space: nowrap; }
+
+/* 収まらないときだけ流す(is-scrolling は app.js が付ける)。
+ * コンテナの右端の外から入り、左端の外へ抜けきるまでが 1 周。抜けきってから次の周が
+ * 始まるので、流れている文の途中に次の周の文字が割り込むことがない。
+ * 開始位置 --ticker-from(= コンテナ幅)と終了位置 --ticker-to(= 文の幅の負値)、
+ * および速度は app.js が実測して指定する。
+ * ここを % で書くと、flex アイテムの % パディングがトラック幅を基準に循環参照になり、
+ * 文が抜けきる前に巻き戻ってしまうため、必ずピクセル値で渡す。 */
+.event-ticker.is-scrolling .event-ticker-track {
+  animation: ticker-scroll 20s linear infinite;
+}
+
+/* 端のフェードは流れているときだけ掛ける。
+ * 収まっていて動かない文にも掛けると、左端にある文頭がただ薄いだけになる。
+ * 流れている間は、文が出ていく左端だけをぼかす(右端は次の文字が現れる側で、
+ * ここを薄くすると読もうとしている先の文字が見えなくなる)。 */
+.event-ticker.is-scrolling {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px);
+          mask-image: linear-gradient(90deg, transparent, #000 16px);
+}
+
+@keyframes ticker-scroll {
+  from { transform: translateX(var(--ticker-from, 100%)); }
+  to   { transform: translateX(var(--ticker-to, -100%)); }
 }
 
 .info-grid {
@@ -2507,7 +2540,7 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   .detail-tab { padding: 10px 12px 9px; font-size: 12.5px; }
   .detail-panels { padding: 16px 14px 20px; }
 
-  .event-description { font-size: 13.5px; }
+  .event-ticker { font-size: 13.5px; }
 
   .info-grid { grid-template-columns: 1fr; }
 
@@ -2539,5 +2572,9 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   .card-body { transition: none; }
   .detail-panel.is-active { animation: none; }
   .dot-live, .live-flash, .detail-tab[data-tab="live"]::before { animation: none; }
+  /* 動きを止める設定では、説明文は流さず折り返して全文を出す */
+  .event-ticker { overflow: visible; -webkit-mask-image: none; mask-image: none; }
+  .event-ticker-track { animation: none; width: auto; }
+  .event-ticker-item { white-space: normal; padding-left: 0; }
   .card-chevron { transition: none; }
 }
