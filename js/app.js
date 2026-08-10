@@ -215,7 +215,6 @@
   }
 
   function resultsPanel(ev) {
-    var hasBounty = ev.results.some(function (r) { return r.bounty > 0; });
     /* Prize は Prize タブ(GET /v1/event/{id}/payouts)の値に合わせる。
      * 結果一覧(POST /v1/event/{id}/players)が持つ payoutAmount とペイアウト表の
      * 金額が食い違うことがあり、正しいのはペイアウト表のほうなので、順位で引き当てて
@@ -224,7 +223,19 @@
     var payoutByPos = {};
     (ev.payouts || []).forEach(function (p) { payoutByPos[p.pos] = p; });
 
-    var body = ev.results.map(function (r) {
+    /* 表示する順位の範囲。参加者全員(数百人になることもある)を出すと縦に長すぎるため、
+     * 上位 9 位までを基本にする。ただし賞金が 9 位より下まで出る大会では入賞者が
+     * 切れてしまうので、ペイアウト表の最下位まで広げる。
+     * 例) ペイアウトが 6 位まで → 9 位まで表示 / 24 位まで → 24 位まで表示 */
+    var RESULTS_MIN_PLACES = 9;
+    var payoutLast = (ev.payouts || []).reduce(function (m, p) { return Math.max(m, p.pos); }, 0);
+    var lastPlace = Math.max(RESULTS_MIN_PLACES, payoutLast);
+    var shown = ev.results.filter(function (r) { return r.pos <= lastPlace; });
+
+    /* Bounty 列は表示する範囲に賞金首が居るときだけ出す(全員空欄の列を作らない) */
+    var hasBounty = shown.some(function (r) { return r.bounty > 0; });
+
+    var body = shown.map(function (r) {
       var posCls = r.pos === 1 ? ' class="row-winner"' : '';
       var medalCls = r.pos <= 3 ? ' pos-' + r.pos : '';
       var prize = payoutByPos[r.pos] ? prizeLabel(payoutByPos[r.pos]) : yen(r.prize);
