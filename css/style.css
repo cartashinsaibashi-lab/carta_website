@@ -375,11 +375,13 @@ body[data-theme="utage"] .brand-mark { border-radius: 50%; }
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  line-height: 1.04;
+  /* 月名("Aug" の g など)のディセンダが下段の年に食い込まない行間。
+   * 1.04 では g の下が 2026 に重なっていた。 */
+  line-height: 1.32;
 }
 
 .ml-month {
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -688,12 +690,16 @@ body[data-theme="utage"] .mp-year-chip { font-family: var(--font-mincho); }
 }
 
 /* All / Live / Open / Close は均等ストレッチ、Favorites(★)は右端で幅小(伸ばさない) */
-.status-row .status-pill { flex: 1 1 0; min-width: 0; }
+/* 状況フィルタのピルは高さを抑える。padding だけ削っても .status-pill の
+ * min-height: 32px が効いて高さが変わらないため、ここで下限も下げている。 */
+.status-row .status-pill { flex: 1 1 0; min-width: 0; min-height: 28px; }
 .status-row .fav-pill {
   flex: 0 0 auto;
   padding-left: 14px;
   padding-right: 14px;
-  font-size: 15px;
+  /* ★ だけ大きいと行の高さがこれに引っ張られる(status-row は stretch)ので、
+   * 他のピルのラベルと同じ高さに収まるサイズにする。 */
+  font-size: 13px;
 }
 
 .status-pill {
@@ -2428,7 +2434,7 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
 
   .month-nav { position: static; padding-right: 6px; gap: 0; }
   .month-label { padding: 5px 8px; gap: 5px; }
-  .ml-month { font-size: 14px; }
+  .ml-month { font-size: 12.5px; }
 
   /* ピッカーは画面横いっぱいのドロップダウンに */
   .date-strip { position: relative; }
@@ -2461,10 +2467,10 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
 
   .status-row { flex-wrap: nowrap; gap: 5px; }
 
+  /* padding は指定せず基本スタイル(5px 8px)のままにして、ピルの高さを低く保つ */
   .status-row .status-pill {
     flex: 1;
     min-width: 0;
-    padding: 8px 4px;
     font-size: 12px;
     gap: 4px;
   }
@@ -2473,7 +2479,7 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
     flex: 0 0 auto;
     padding-left: 11px;
     padding-right: 11px;
-    font-size: 14px;
+    font-size: 12px;
   }
 
   /* カード: コンパクト表示 */
