@@ -1258,8 +1258,6 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   margin-bottom: 18px;
   color: var(--text-dim);
   font-size: 14px;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 20px), transparent);
-          mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 20px), transparent);
 }
 
 .event-ticker-track {
@@ -1275,6 +1273,15 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 .event-ticker.is-scrolling .event-ticker-item { padding-right: 3rem; }
 .event-ticker.is-scrolling .event-ticker-track {
   animation: ticker-scroll 20s linear infinite;
+}
+
+/* 端のフェードは流れているときだけ掛ける。
+ * 収まっていて動かない文にも掛けると、左端にある文頭がただ薄いだけになる。
+ * 流れている間は、文が出ていく左端だけをぼかす(右端は次の文字が現れる側で、
+ * ここを薄くすると読もうとしている先の文字が見えなくなる)。 */
+.event-ticker.is-scrolling {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px);
+          mask-image: linear-gradient(90deg, transparent, #000 16px);
 }
 /* 読み終わる前に流れていくのを防ぐ。触れている / ポインタを乗せている間は止める */
 .event-ticker.is-scrolling:hover .event-ticker-track { animation-play-state: paused; }
