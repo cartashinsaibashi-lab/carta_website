@@ -1041,18 +1041,19 @@ body.app-ready .app-loading {
 }
 
 /* 情報行(Date / Start / Reg Close / Buy-in / Chips) */
+/* 情報行は 2 行 × 3 項目。上下の行で項目の開始位置を揃えるため、
+ * .card-lines を 1 つのグリッドにして .card-line を display:contents で透過させる。
+ * 行ごとに別のグリッドにすると列幅が行内の内容だけで決まり、上下がずれる。
+ * 列幅は auto(2 行のうち広いほうに合わせる)で、余りは列の間に配る。 */
 .card-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: space-between;
+  gap: 3px 16px;
   padding: 7px 14px 12px;
 }
 
-.card-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-}
+.card-line { display: contents; }
 
 .card-stat {
   display: inline-flex;
@@ -2485,12 +2486,13 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   .card-title { font-size: 15px; line-height: 1.25; }
   .fav-btn { width: 30px; height: 30px; font-size: 17px; }
 
-  .card-lines { padding: 6px 12px 11px; }
+  /* 狭い画面では左右の余白を詰めて、3 項目 × 2 行を折り返さずに収める */
+  .card-lines { padding: 6px 6px 11px; }
   /* 情報行は 1 行 3 項目(Date/Start/Reg Close)を必ず 1 段に収める。
    * 390px 幅では使える幅が 333px しかなく、曜日が幅広(Thu)+レジクロが 2 桁(Lv.10)の
    * 大会だと既定の gap では 1px ほど溢れて Reg Close だけ次段に落ちていた。
    * 項目間 14→10px / ラベルと値の間 7→5px で計 14px 詰めて余裕を作る。 */
-  .card-line { gap: 4px 10px; }
+  .card-lines { column-gap: 8px; }
   .card-stat { gap: 5px; }
   .card-stat .v { font-size: 13px; }
 
