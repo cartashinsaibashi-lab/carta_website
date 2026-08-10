@@ -172,9 +172,17 @@
         ev.details.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') +
         '</ul>';
     }
-    /* 説明文が未入力の大会(2 割ほどある)では段落ごと出さない */
+    /* 説明文はティッカー(横に流れる 1 行)で出す。長い説明でもカードの高さを取らない。
+     * 途切れずにループさせるため同じ文を 2 つ並べ、1 つ分だけ左に流す。
+     * 2 つ目は読み上げに重複して拾われないよう aria-hidden にする。
+     * 短くて収まる説明は流さない(判定と速度は syncTickers が行う)。
+     * 説明文が未入力の大会(2 割ほどある)では要素ごと出さない。 */
     var descHtml = ev.description
-      ? '<p class="event-description">' + esc(ev.description) + '</p>'
+      ? '<div class="event-ticker">' +
+        '<div class="event-ticker-track">' +
+        '<span class="event-ticker-item">' + esc(ev.description) + '</span>' +
+        '<span class="event-ticker-item" aria-hidden="true">' + esc(ev.description) + '</span>' +
+        '</div></div>'
       : '';
     return (
       descHtml +
@@ -406,6 +414,28 @@
       '<span class="seat-chips">' + (s.chips > 0 ? num(s.chips) : '') + '</span>' +
       '</div>'
     );
+  }
+
+  /* 説明文ティッカーの「流す/流さない」と速度を決める。
+   * 文がコンテナに収まるなら流さない(短い説明が意味もなく動くのを避ける)。
+   * 流す場合は文の長さに比例した時間を与え、どの大会でもだいたい同じ速さ
+   * (約 60px/秒 = 日本語で 1 秒に 4 文字強)で読めるようにする。
+   * 非表示のタブは幅が 0 で測れないため触らない(タブを開いたときに再度呼ばれる)。 */
+  var TICKER_PX_PER_SEC = 60;
+
+  function syncTickers() {
+    listEl.querySelectorAll('.event-ticker').forEach(function (el) {
+      var track = el.querySelector('.event-ticker-track');
+      var item = track && track.firstElementChild;
+      if (!item || !el.clientWidth) return;
+      var scrolling = item.getBoundingClientRect().width > el.clientWidth;
+      el.classList.toggle('is-scrolling', scrolling);
+      if (!scrolling) { track.style.animationDuration = ''; return; }
+      /* 1 周で流れる距離 = 複製 1 つ分。複製の後ろの余白は is-scrolling が付いて
+       * はじめて入るため、クラスを付けたあとに測り直す。 */
+      var loopPx = item.getBoundingClientRect().width;
+      track.style.animationDuration = Math.max(8, Math.round(loopPx / TICKER_PX_PER_SEC)) + 's';
+    });
   }
 
   /* 卓タブの横スクロール位置を選択中の卓に合わせる。
@@ -783,6 +813,7 @@
     bindCards();
     startTimers();
     syncSeatTabScroll();
+    syncTickers();
     syncOpenParam();
     prefetchVisibleDetails(); // 表示中カードの詳細をバックグラウンド先読み
   }
@@ -1045,6 +1076,7 @@
           card.querySelectorAll('.detail-panel').forEach(function (p) {
             p.classList.toggle('is-active', p.dataset.panel === key);
           });
+          syncTickers(); // 非表示のうちは幅が測れないので、表示された時点で測り直す
         });
       });
 
