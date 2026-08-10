@@ -2,6 +2,60 @@
 // 実 API の VenueEvent / EventLevel / EventPlayer スキーマ(standard swagger)に沿わせているので、
 // これを通して adapter を検証すれば live 切替時の変換ロジックがそのまま使える。
 
+// ---- デモ用の日付アンカー ----------------------------------------------
+// 開催日を固定日で持つと、時間の経過とともにデモの表示が壊れる。
+// app.js の headStatus() は「開始時刻を過ぎ、レジクロも過ぎている」大会を LIVE と
+// 判定するため、固定日が過去になると開催予定の大会まで LIVE バッジになり、
+// 未来の大会が消えて STARTS IN / REG CLOSE IN のカウントダウンも出なくなる。
+// そのため日付は mockRequest の呼び出しごとに「今」を基準に組み立てる。
+
+const JST_OFFSET_MS = 9 * 3600e3;
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+// ms(絶対時刻)を JST の壁時計として "YYYY-MM-DDTHH:MM:SS" にする。
+// dailyDetails.startDate / subscriptionClose は実 API もオフセット無しの
+// 会場ローカル時刻(= JST)で返すので、同じ形に揃える。
+// +9h ずらしてから UTC 系のゲッタで読むことで、サーバーの TZ 設定に依存させない。
+function jstWallClock(ms) {
+  const d = new Date(ms + JST_OFFSET_MS);
+  return (
+    `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}` +
+    `T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`
+  );
+}
+
+// status.date 用。実 API はオフセット付き("2026-08-07T13:03:23.723+02:00")で返し、
+// adapter は Date.parse でそのまま絶対時刻として扱うため、こちらも明示する。
+function jstInstant(ms) {
+  return jstWallClock(ms) + '+09:00';
+}
+
+// JST の「今日」から dayOffset 日ずらした日の hour:minute(壁時計 ISO)。
+function jstDayAt(now, dayOffset, hour, minute) {
+  const d = new Date(now + JST_OFFSET_MS);
+  d.setUTCDate(d.getUTCDate() + dayOffset);
+  d.setUTCHours(hour, minute, 0, 0);
+  return jstWallClock(d.getTime() - JST_OFFSET_MS);
+}
+
+// 直近に過ぎた「hour:00(JST)」の絶対時刻。今日の分がまだ来ていなければ前日を返す。
+// 進行中の大会の開始時刻に使う。
+//
+// ここを「now の 3 時間前」のように now からの相対で決めてはいけない。
+// 経過時間が常に一定になり、app.js が 25 秒ごとにポーリングするたびに
+// レベルタイマーが同じ残り時間へ巻き戻ってしまう。
+// now と無関係な固定の時刻を基準にすることで、時間が進むほど経過時間が増え、
+// タイマーが実時間どおりに減っていく。
+function lastOccurrenceAt(now, hour) {
+  const d = new Date(now + JST_OFFSET_MS);
+  d.setUTCHours(hour, 0, 0, 0);
+  const ms = d.getTime() - JST_OFFSET_MS;
+  return ms > now ? ms - 86400e3 : ms;
+}
+
 const LEAGUE_WOLF = { id: '11111111-1111-1111-1111-111111111111', name: 'Wolf' };
 const LEAGUE_UTAGE = { id: '22222222-2222-2222-2222-222222222222', name: 'Utage 宴' };
 const LEAGUE_OTHER = { id: '33333333-3333-3333-3333-333333333333', name: 'Weekly' };
@@ -182,7 +236,11 @@ function venueEvent(over) {
       levelIndex: over.levelIndex || 0,
       level: { index: over.levelIndex || 0, elapsedSeconds: over.elapsedSeconds || 0 },
       levelMinutes: over.levelMinutes || 30,
-      date: over.startDate,
+      // status.date は「この status を取得した時刻」のスナップショット。
+      // adapter の buildLive() が endsAt(= date + レベル残り時間)の基準にするので、
+      // 進行中の大会では statusDate に「今」を渡してレベルタイマーを動かす。
+      // 指定が無ければ従来どおり開始時刻を入れる(開始前/終了後は使われない)。
+      date: over.statusDate || over.startDate,
     },
     subscription: {
       buyin: over.buyin,
@@ -204,17 +262,32 @@ function venueEvent(over) {
 }
 
 // ---- 実際のイベント群 ----
-const EVENTS = [
+// now(絶対時刻 ms)を基準に、進行中 1 / 開催予定 2 / 終了 1 を組み立てる。
+// カードの状態表示(LIVE / STARTS IN / CLOSED)が一通り出るようにしてある。
+function buildEvents(now) {
+  // 進行中の大会は「直近の 11:00 開始」に固定する。開始時刻を絶対時刻で持つことで
+  // 経過時間が実時間とともに増え、レベルタイマーが正しく減っていく。
+  // 経過がレベル長を超えたら次のレベルに進んだものとして先頭から数え直す。
+  const LIVE_LEVEL_MINUTES = 40;
+  const liveStart = lastOccurrenceAt(now, 11);
+  const liveElapsed = Math.floor((now - liveStart) / 1000) % (LIVE_LEVEL_MINUTES * 60);
+
+  return [
   venueEvent({
     id: 'evt-wolf-main',
     name: 'Wolf Main Event — Day 1A',
     league: LEAGUE_WOLF,
     statusCode: 'running',
-    startDate: '2026-07-29T12:00:00',
+    // 本日 11:00 開始の進行中の大会。
+    // status.date は「この状態を取得した時刻」なので今を渡し、経過時間は開始からの
+    // 実経過にする。adapter が endsAt = status.date + (レベル長 - 経過) を計算するため、
+    // ポーリングのたびに同じ絶対時刻が返り、タイマーが巻き戻らずに減っていく。
+    startDate: jstWallClock(liveStart),
+    statusDate: jstInstant(now),
     flight: 'Day 1A',
-    levelMinutes: 40,
+    levelMinutes: LIVE_LEVEL_MINUTES,
     levelIndex: 8,
-    elapsedSeconds: 600,
+    elapsedSeconds: liveElapsed,
     lateRegLevel: 9,
     guarantee: 10000000,
     // 実データに合わせて Description(表示) と Announcement(運用メモ) を別々に持たせる
@@ -233,12 +306,13 @@ const EVENTS = [
     name: 'Utage Deepstack',
     league: LEAGUE_UTAGE,
     statusCode: 'opened',
-    startDate: '2026-07-31T18:00:00',
+    // 翌日開催。STARTS IN のカウントダウンが出る(1 ヶ月以内のため)
+    startDate: jstDayAt(now, 1, 18, 0),
     levelMinutes: 30,
     lateRegLevel: 10,
     guarantee: 3000000,
     cap: 300,
-    subscriptionClose: '2026-07-31T19:30:00',
+    subscriptionClose: jstDayAt(now, 1, 19, 30),
     buyin: buyin(15000, 2000, 40000, 'Deepstack'),
     buyins: [buyin(15000, 2000, 40000, 'Deepstack'), buyin(25000, 3000, 70000, 'High Roller add')],
     allowRebuy: true,
@@ -249,12 +323,13 @@ const EVENTS = [
     name: 'Wolf Satellite',
     league: LEAGUE_WOLF,
     statusCode: 'opened',
-    startDate: '2026-08-01T19:00:00',
+    // 3 日後開催。日付見出しが複数日にまたがる状態を再現する
+    startDate: jstDayAt(now, 3, 19, 0),
     levelMinutes: 20,
     lateRegLevel: 6,
     guarantee: 0,
     cap: 120,
-    subscriptionClose: '2026-08-01T20:00:00',
+    subscriptionClose: jstDayAt(now, 3, 20, 0),
     description: '5エントリー毎に1名様がマルチ・チケットを獲得することができます。',
     announcement: '5E毎にマルチチケット',
     buyin: buyin(5000, 500, 15000, 'Satellite'),
@@ -265,7 +340,8 @@ const EVENTS = [
     name: 'Sunday Bounty',
     league: LEAGUE_OTHER,
     statusCode: 'closed',
-    startDate: '2026-07-26T13:00:00',
+    // 4 日前に終了。Past 区切りと結果タブの表示に使う
+    startDate: jstDayAt(now, -4, 13, 0),
     levelMinutes: 20,
     lateRegLevel: 8,
     guarantee: 1500000,
@@ -276,7 +352,8 @@ const EVENTS = [
       totalPayoutAmount: 2400000, totalPayouts: 24, totalTables: 0,
     },
   }),
-];
+  ];
+}
 
 const LEVELS_BY_ID = {
   'evt-wolf-main': makeLevels(
@@ -317,15 +394,17 @@ const PAYOUTS_BY_ID = {
   // 未設定の大会(payouts が空 = まだ組んでいない)は evt-utage-deep で再現
 };
 
-function findEvent(id) {
-  return EVENTS.find((e) => e.id === id) || null;
-}
-
-// mock ルータ: 実 API と同じ path で呼ばれる想定
+// mock ルータ: 実 API と同じ path で呼ばれる想定。
+// イベントは呼び出しのたびに「今」を基準に組み立て直す。モジュールスコープに持つと
+// warm な関数インスタンスが再利用される間ずっと同じ日付が返り、
+// 時間の経過で進行中の大会のレベルタイマーが 00:00 のまま止まってしまうため。
 export function mockRequest(method, path, body) {
+  const events = buildEvents(Date.now());
+  const findEvent = (id) => events.find((e) => e.id === id) || null;
+
   // POST /v1/event/search
   if (method === 'POST' && path === '/v1/event/search') {
-    let results = EVENTS.slice();
+    let results = events.slice();
     const opt = body || {};
     if (opt.status) {
       // 検索の status enum(scheduled|running|results|closed)→ VenueEvent.status.code へ寄せる
@@ -362,4 +441,5 @@ export function mockRequest(method, path, body) {
   return null;
 }
 
-export const _fixtures = { EVENTS, LEVELS_BY_ID, PLAYERS_BY_ID, PAYOUTS_BY_ID };
+// テスト/デバッグ用。EVENTS は日付が「今」基準なので、参照時点で組み立てる。
+export const _fixtures = { buildEvents, LEVELS_BY_ID, PLAYERS_BY_ID, PAYOUTS_BY_ID };
