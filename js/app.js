@@ -136,6 +136,22 @@
     return first ? first.minutes : 0;
   }
 
+  /* ストラクチャー Lv.1 の BB。開始スタックが何 BB 分かの計算に使う。
+   * 一覧の時点ではストラクチャーが空なので 0 を返し、その場合は BB 表記を出さない。 */
+  function firstLevelBB(ev) {
+    var first = (ev.structure || []).find(function (r) { return r.type === 'level'; });
+    return first ? first.bb : 0;
+  }
+
+  /* "10,000 (100BB)"。BB 数はストラクチャー Lv.1 の BB で割った値。
+   * 見出しが "Starting Chips" なので単位の "chips" は重ねない。
+   * 一覧の時点ではストラクチャーが未取得で BB が分からないため、その場合は枚数だけ出す。 */
+  function startingChipsText(ev) {
+    var bb = firstLevelBB(ev);
+    var chips = num(ev.startingStack);
+    return bb > 0 ? chips + ' (' + num(Math.round(ev.startingStack / bb)) + 'BB)' : chips;
+  }
+
   function infoPanel(ev) {
     var mins = levelMinutesOf(ev);
     var rows = [
@@ -144,9 +160,10 @@
       /* Buy-in は subscription.buyin.fee のみを表示する(本体・合計は出さない) */
       ['Buy-in', yen(ev.fee)],
       ['Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None'],
-      ['Starting Stack', num(ev.startingStack) + ' chips'],
+      ['Starting Chips', startingChipsText(ev)],
       ['Level Length', mins ? mins + ' min' : '—'],
-      ['Late Reg', ev.lateReg],
+      /* カードの Reg Close と同じ内容を出す(片方だけ表記が違うと混乱するため) */
+      ['Late Reg', regCloseText(ev) || ev.lateReg || '—'],
       ['Re-entry', ev.reentry],
       ['Game', ev.gameType]
     ];
@@ -601,16 +618,22 @@
     return futureOpenPhase(ev);
   }
 
+  /* レジストレーション締切の表記 "17:00 (Lv.8)"(締切時刻 + レイトレジ終了レベル)。
+   * カードの Reg Close 列と Info タブの Late Reg 行で同じ内容を出すため共通化している。
+   * 時刻もレベルも分からない大会では空文字。 */
+  function regCloseText(ev) {
+    var m = /Lv\.?\s*(\d+)/i.exec(ev.lateReg || '');
+    var lv = m ? 'Lv.' + m[1] : '';
+    var t = ev.regCloseTime || '';
+    return t ? (t + (lv ? ' (' + lv + ')' : '')) : lv;
+  }
+
   /* START 行の 2 列目。参照デザイン: "Reg Close 17:00 (Lv.8)"(時刻 + レジクロレベル) */
   function headSecondStat(ev) {
     var mins = levelMinutesOf(ev);
     var minsLabel = mins ? mins + '-min' : '—';
     if (ev.status === 'past') return { k: 'Levels', v: minsLabel };
-    var m = /Lv\.?\s*(\d+)/i.exec(ev.lateReg || '');
-    var lv = m ? 'Lv.' + m[1] : '';
-    var t = ev.regCloseTime || '';
-    var v = t ? (t + (lv ? ' (' + lv + ')' : '')) : (lv || minsLabel);
-    return { k: 'Reg Close', v: v };
+    return { k: 'Reg Close', v: regCloseText(ev) || minsLabel };
   }
 
   /* カード用 Players 表示("現在 / 総数")。
