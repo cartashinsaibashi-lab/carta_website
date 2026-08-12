@@ -17,6 +17,33 @@
     <div class="loader-spinner"></div>
   </div>
 
+  <!-- 初回表示: どのシリーズを見るかを選ぶ全画面パネル。
+       js/app.js が表示制御する(?event= の直リンク時は出さない)。 -->
+  <div class="category-gate" id="categoryGate" role="dialog" aria-modal="true"
+       aria-label="シリーズを選択" hidden>
+    <div class="gate-inner">
+      <p class="gate-brand">CARTA POKER SERIES</p>
+      <p class="gate-lead">Select a series</p>
+      <!-- ロゴのみを横 3 つ並べる。名前は出さないので、読み上げ用に aria-label を付ける。
+           宴は暗い画面用の白ロゴ(assets/logo.png)を使う。 -->
+      <div class="gate-list">
+        <button class="gate-item" type="button" data-category="wolf" aria-label="Wolf">
+          <img class="gate-icon" src="assets/logo-wolf.png" alt="">
+        </button>
+        <button class="gate-item" type="button" data-category="utage" aria-label="宴 Utage">
+          <img class="gate-icon" src="assets/logo.png" alt="">
+        </button>
+        <button class="gate-item" type="button" data-category="other" aria-label="その他・コラボイベント等">
+          <img class="gate-icon" src="assets/logo-other.png" alt="">
+        </button>
+      </div>
+    </div>
+    <!-- 選択後に、選んだシリーズのロゴだけを中央に出す(src は app.js が差し替える) -->
+    <div class="gate-splash" aria-hidden="true">
+      <img class="gate-splash-icon" src="" alt="">
+    </div>
+  </div>
+
   <!-- Header: 左にブランド / 右にカテゴリ(スートアイコン) -->
   <header class="site-header">
     <div class="container header-inner">
@@ -32,7 +59,7 @@
           <span class="category-tab-count" data-count="wolf">0</span>
         </button>
         <button class="category-tab" data-category="utage" title="Utage" aria-label="Utage">
-          <img class="category-tab-icon" src="assets/logo-utage.png" alt="Utage">
+          <img class="category-tab-icon" src="assets/logo.png" alt="Utage">
           <span class="category-tab-count" data-count="utage">0</span>
         </button>
         <button class="category-tab" data-category="other" title="Other" aria-label="Other">

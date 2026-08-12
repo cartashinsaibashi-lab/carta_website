@@ -1772,20 +1772,122 @@
 
   /* ---------- 上部タブ / フィルタ ---------- */
 
-  document.getElementById('categoryTabs').addEventListener('click', function (e) {
-    var btn = e.target.closest('.category-tab');
-    if (!btn) return;
-    state.category = btn.dataset.category;
+  /* 種別の切り替え。ヘッダーのタブと、初回表示の選択画面の両方から呼ぶ。 */
+  function selectCategory(category) {
+    state.category = category;
     state.openedId = null;
     document.querySelectorAll('.category-tab').forEach(function (t) {
-      t.classList.toggle('is-active', t === btn);
+      t.classList.toggle('is-active', t.dataset.category === category);
     });
-    applyTheme(state.category);
+    applyTheme(category);
     state.pickerOpen = false;
     renderMonthNav();
     renderDateStrip();
     render();
+  }
+
+  document.getElementById('categoryTabs').addEventListener('click', function (e) {
+    var btn = e.target.closest('.category-tab');
+    if (!btn) return;
+    selectCategory(btn.dataset.category);
   });
+
+  /* ---------- 初回表示の種別選択 ----------
+   * どのシリーズを見るかを最初に選んでもらう。選ぶとその種別の一覧に切り替わる。
+   * ?event=<id> で特定の大会を開く場合は種別が決まっているので出さない。 */
+  function setupCategoryGate() {
+    var gate = document.getElementById('categoryGate');
+    if (!gate) return;
+    if (new URLSearchParams(location.search).get(OPEN_PARAM)) return;
+
+    gate.hidden = false;
+    document.body.classList.add('gate-open'); // 背後をスクロールさせない
+
+    var picking = false; // 連打で演出が二重に走らないようにする
+    gate.addEventListener('click', function (e) {
+      var btn = e.target.closest('.gate-item');
+      if (!btn || picking) return;
+      picking = true;
+      /* 先に種別を切り替える。テーマ(配色)もここで変わるので、
+       * 選択後の演出は選んだシリーズの色で見える。 */
+      selectCategory(btn.dataset.category);
+      playGateExit(gate, btn);
+    });
+  }
+
+  /* 選択後の演出。
+   *   1) 選択肢と見出しを消し、選んだシリーズのロゴだけを中央に大きく出す
+   *   2) 少し見せてから、全体をうっすら消して一覧を表に出す
+   * 配色は selectCategory() で既に切り替わっているため、演出も選んだ色になる。
+   * 動きを減らす設定では演出せずに閉じる。 */
+  /* 中央に出すロゴを、ヘッダーのタブとは別の画像にしたい種別。
+   * 宴は地色が和紙色(明るい)なので、白抜きではなく墨色のロゴを使う。 */
+  var SPLASH_LOGO = { utage: 'assets/logo-utage.png' };
+
+  var GATE_HOLD_MS = 800;   // ロゴを中央で見せている時間
+  var GATE_FLY_MS = 850;    // 右上へ飛んで消えるまで(CSS の transition と揃える)
+
+  function playGateExit(gate, picked) {
+    var splash = gate.querySelector('.gate-splash-icon');
+    var close = function () {
+      gate.hidden = true;
+      gate.classList.remove('is-picking', 'is-leaving');
+      document.body.classList.remove('gate-open');
+      if (splash) { splash.classList.remove('is-flying'); splash.style.transform = ''; }
+    };
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { close(); return; }
+
+    /* 中央に出すロゴは下地を敷かず、シリーズの地色の上に直接置く。
+     * ウルフ(藍紫)とその他(バーガンディ)は地が濃いので白抜きロゴがそのまま映える。
+     * 宴だけは地が和紙色(明るい)で白抜きだと見えないため、濃色版に差し替える。 */
+    var category = picked.dataset.category;
+    var src = SPLASH_LOGO[category];
+    if (!src) {
+      var icon = document.querySelector(
+        '.category-tab[data-category="' + category + '"] .category-tab-icon') ||
+        picked.querySelector('.gate-icon');
+      src = icon && icon.src;
+    }
+    if (splash && src) splash.src = src;
+
+    gate.classList.add('is-picking');
+    setTimeout(function () {
+      flyLogoToHeaderTab(gate, splash, picked.dataset.category, close);
+    }, GATE_HOLD_MS);
+  }
+
+  /* 中央のロゴを、ヘッダー右上にある同じシリーズのタブまで飛ばしながら消す。
+   * 「右上を押せば切り替えられる」と気づいてもらうための目線誘導。
+   * 背景だけ先に透明にして一覧を見せ、ロゴは飛び切ってから消える。 */
+  function flyLogoToHeaderTab(gate, splash, category, done) {
+    gate.classList.add('is-leaving');
+    var target = document.querySelector(
+      '.category-tab[data-category="' + category + '"] .category-tab-icon');
+    if (!splash || !target) { setTimeout(done, GATE_FLY_MS); return; }
+
+    var from = splash.getBoundingClientRect();
+    var to = target.getBoundingClientRect();
+    /* 拡大(scale)は中心を動かさないので、いまの中心とタブの中心の差がそのまま移動量になる。
+     * 縮小率はレイアウト上の大きさ(offsetWidth)に対して求める。 */
+    var dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+    var dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+    var scale = to.width / (splash.offsetWidth || to.width);
+
+    splash.classList.add('is-flying');
+    // 直前の拡大が確定してから飛ばす(同じフレームで書き換えると transition が起きない)
+    requestAnimationFrame(function () {
+      splash.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
+    });
+
+    // 着地するタブを軽く光らせて、押せる場所だと分かるようにする
+    var tab = target.closest('.category-tab');
+    if (tab) {
+      tab.classList.add('is-hinted');
+      setTimeout(function () { tab.classList.remove('is-hinted'); }, 1800);
+    }
+    setTimeout(done, GATE_FLY_MS);
+  }
 
   document.getElementById('favFilter').addEventListener('click', function () {
     state.favOnly = !state.favOnly;
@@ -1828,6 +1930,8 @@
     var initialCard = document.getElementById('event-' + openId);
     if (initialCard) scrollToOpenCard(initialCard);
   }
+
+  setupCategoryGate();             // 一覧が用意できてから種別の選択画面を出す
 
   // 初期描画が完了したのでローディングを解除して画面を表示
   document.body.classList.add('app-ready');
