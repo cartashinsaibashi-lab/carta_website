@@ -305,11 +305,14 @@ body[data-theme="utage"] .brand-mark { border-radius: 50%; }
   border-radius: 9px;
   padding: 2px;
 }
+/* 3 種別とも白抜きロゴなので、下地は共通の濃色 */
 .category-tab[data-category="wolf"] .category-tab-icon,
-.category-tab[data-category="other"] .category-tab-icon { background: #17132f; }
-.category-tab[data-category="utage"] .category-tab-icon { background: #f2ebda; }
+.category-tab[data-category="other"] .category-tab-icon,
+.category-tab[data-category="utage"] .category-tab-icon { background: #17132f; }
 /* 選択タブはコンテンツ箱と一体化(ロゴ下地は箱の地色に合わせて透過) */
 .category-tab.is-active .category-tab-icon { background: transparent; }
+/* ただし宴は白抜きロゴなので、選択中も下地の濃色を残す(和紙色の地に溶けるため) */
+.category-tab.is-active[data-category="utage"] .category-tab-icon { background: #17132f; }
 
 .category-tab-count { display: none; }
 
@@ -811,6 +814,12 @@ body[data-theme="wolf"] .status-pill.is-active {
   width: 140px;
   height: 140px;
   object-fit: contain;
+  /* ロゴは白抜きなので、明るいテーマ(宴の和紙色)でも見えるよう下地を敷く。
+   * 着地先であるタブのロゴ下地と同じ色・同じ形にして、そのまま収まったように見せる
+   * (角丸はタブ側 9px を、縮小率 140→44 に合わせて逆算した値)。 */
+  background: #17132f;
+  border-radius: 28px;
+  padding: 16px;
   transform: scale(.78);
   transition: transform 1.05s cubic-bezier(.16, .8, .24, 1) .1s;
 }
@@ -2574,10 +2583,10 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
     padding: 3px 4px;
   }
   .category-tab.is-active { background: none; }
-  /* 選択ロゴの下地チップを戻す(透過解除) */
+  /* 選択ロゴの下地チップを戻す(透過解除)。3 種別とも白抜きロゴなので共通の濃色 */
   .category-tab.is-active[data-category="wolf"] .category-tab-icon,
-  .category-tab.is-active[data-category="other"] .category-tab-icon { background: #17132f; }
-  .category-tab.is-active[data-category="utage"] .category-tab-icon { background: #f2ebda; }
+  .category-tab.is-active[data-category="other"] .category-tab-icon,
+  .category-tab.is-active[data-category="utage"] .category-tab-icon { background: #17132f; }
 
   /* 日付セレクター: 全幅・コンパクト */
   .date-strip {
