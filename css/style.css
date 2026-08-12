@@ -814,12 +814,9 @@ body[data-theme="wolf"] .status-pill.is-active {
   width: 140px;
   height: 140px;
   object-fit: contain;
-  /* ロゴは白抜きなので、明るいテーマ(宴の和紙色)でも見えるよう下地を敷く。
-   * 着地先であるタブのロゴ下地と同じ色・同じ形にして、そのまま収まったように見せる
-   * (角丸はタブ側 9px を、縮小率 140→44 に合わせて逆算した値)。 */
-  background: #17132f;
-  border-radius: 28px;
-  padding: 16px;
+  /* 下地は敷かず、シリーズの地色の上にロゴだけを置く。
+   * 宴は地色が和紙色(明るい)で白抜きロゴが見えないため、
+   * app.js が濃色版のロゴに差し替える。 */
   transform: scale(.78);
   transition: transform 1.05s cubic-bezier(.16, .8, .24, 1) .1s;
 }

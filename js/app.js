@@ -1661,6 +1661,10 @@
    *   2) 少し見せてから、全体をうっすら消して一覧を表に出す
    * 配色は selectCategory() で既に切り替わっているため、演出も選んだ色になる。
    * 動きを減らす設定では演出せずに閉じる。 */
+  /* 中央に出すロゴを、ヘッダーのタブとは別の画像にしたい種別。
+   * 宴は地色が和紙色(明るい)なので、白抜きではなく墨色のロゴを使う。 */
+  var SPLASH_LOGO = { utage: 'assets/logo-utage.png' };
+
   var GATE_HOLD_MS = 800;   // ロゴを中央で見せている時間
   var GATE_FLY_MS = 850;    // 右上へ飛んで消えるまで(CSS の transition と揃える)
 
@@ -1675,14 +1679,18 @@
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) { close(); return; }
 
-    /* 中央に出すロゴは、ヘッダーのタブと同じ画像を使う。
-     * 選択画面は暗いので宴は白抜きロゴ(assets/logo.png)を置いているが、押した瞬間に
-     * 配色が和紙色(明るい)へ変わるため、白のままだと背景に溶けて見えなくなる。
-     * 着地先と同じ絵でもあるので、そのままタブに収まったように見える。 */
-    var icon = document.querySelector(
-      '.category-tab[data-category="' + picked.dataset.category + '"] .category-tab-icon') ||
-      picked.querySelector('.gate-icon');
-    if (splash && icon) splash.src = icon.src;
+    /* 中央に出すロゴは下地を敷かず、シリーズの地色の上に直接置く。
+     * ウルフ(藍紫)とその他(バーガンディ)は地が濃いので白抜きロゴがそのまま映える。
+     * 宴だけは地が和紙色(明るい)で白抜きだと見えないため、濃色版に差し替える。 */
+    var category = picked.dataset.category;
+    var src = SPLASH_LOGO[category];
+    if (!src) {
+      var icon = document.querySelector(
+        '.category-tab[data-category="' + category + '"] .category-tab-icon') ||
+        picked.querySelector('.gate-icon');
+      src = icon && icon.src;
+    }
+    if (splash && src) splash.src = src;
 
     gate.classList.add('is-picking');
     setTimeout(function () {
