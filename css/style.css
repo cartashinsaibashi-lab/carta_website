@@ -855,20 +855,22 @@ body.gate-open { overflow: hidden; }
   color: var(--text-dim);
 }
 
-.gate-list { display: flex; flex-direction: column; gap: 12px; }
+/* ロゴのみを横 3 つ。均等幅で並べる */
+.gate-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
 
-/* 横に細長い行。左にアイコン、続けて名前 */
 .gate-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+  display: grid;
+  place-items: center;
   width: 100%;
-  padding: 14px 16px;
+  padding: 18px 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 14px;
   color: var(--text);
-  text-align: left;
   cursor: pointer;
   transition: border-color .2s, background .2s, transform .1s;
 }
@@ -877,18 +879,12 @@ body.gate-open { overflow: hidden; }
 .gate-item:active { transform: scale(0.99); }
 .gate-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.gate-icon { width: 48px; height: 48px; object-fit: contain; flex: 0 0 auto; }
-
-.gate-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+.gate-icon {
+  width: 100%;
+  max-width: 78px;
+  height: 78px;
+  object-fit: contain;
 }
-
-.gate-arrow { color: var(--text-faint); font-size: 20px; line-height: 1; }
 
 /* ---------- 初期ローディング(API取得完了まで全画面) ---------- */
 

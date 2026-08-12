@@ -23,22 +23,18 @@
        aria-label="シリーズを選択" hidden>
     <div class="gate-inner">
       <p class="gate-brand">CARTA POKER SERIES</p>
-      <p class="gate-lead">ご覧になるシリーズを選択してください</p>
+      <p class="gate-lead">Select a series</p>
+      <!-- ロゴのみを横 3 つ並べる。名前は出さないので、読み上げ用に aria-label を付ける。
+           宴は暗い画面用の白ロゴ(assets/logo.png)を使う。 -->
       <div class="gate-list">
-        <button class="gate-item" type="button" data-category="wolf">
+        <button class="gate-item" type="button" data-category="wolf" aria-label="Wolf">
           <img class="gate-icon" src="assets/logo-wolf.png" alt="">
-          <span class="gate-name">Wolf</span>
-          <span class="gate-arrow" aria-hidden="true">›</span>
         </button>
-        <button class="gate-item" type="button" data-category="utage">
-          <img class="gate-icon" src="assets/logo-utage.png" alt="">
-          <span class="gate-name">宴</span>
-          <span class="gate-arrow" aria-hidden="true">›</span>
+        <button class="gate-item" type="button" data-category="utage" aria-label="宴 Utage">
+          <img class="gate-icon" src="assets/logo.png" alt="">
         </button>
-        <button class="gate-item" type="button" data-category="other">
+        <button class="gate-item" type="button" data-category="other" aria-label="その他・コラボイベント等">
           <img class="gate-icon" src="assets/logo-other.png" alt="">
-          <span class="gate-name">その他・コラボイベント等</span>
-          <span class="gate-arrow" aria-hidden="true">›</span>
         </button>
       </div>
     </div>

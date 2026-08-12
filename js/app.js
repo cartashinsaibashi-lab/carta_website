@@ -1675,8 +1675,13 @@
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) { close(); return; }
 
-    // 中央に出すロゴは、押された選択肢のアイコンをそのまま使う
-    var icon = picked.querySelector('.gate-icon');
+    /* 中央に出すロゴは、ヘッダーのタブと同じ画像を使う。
+     * 選択画面は暗いので宴は白抜きロゴ(assets/logo.png)を置いているが、押した瞬間に
+     * 配色が和紙色(明るい)へ変わるため、白のままだと背景に溶けて見えなくなる。
+     * 着地先と同じ絵でもあるので、そのままタブに収まったように見える。 */
+    var icon = document.querySelector(
+      '.category-tab[data-category="' + picked.dataset.category + '"] .category-tab-icon') ||
+      picked.querySelector('.gate-icon');
     if (splash && icon) splash.src = icon.src;
 
     gate.classList.add('is-picking');
