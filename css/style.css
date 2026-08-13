@@ -868,11 +868,13 @@ body.gate-open { overflow: hidden; }
   gap: 10px;
 }
 
+/* バナー画像が枠いっぱいに広がるので、余白は画像を縁取る程度に留める
+   (正方形ロゴだった頃の 18px 8px では、横長画像が小さくなりすぎる) */
 .gate-item {
   display: grid;
   place-items: center;
   width: 100%;
-  padding: 18px 8px;
+  padding: 6px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -885,11 +887,16 @@ body.gate-open { overflow: hidden; }
 .gate-item:active { transform: scale(0.99); }
 .gate-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* 選択肢の画像は 185x55(約 3.36:1)の横長バナー。
+   正方形ロゴ前提の固定高さ(78px)のままだと object-fit: contain で上下に余白が入り、
+   バナーが枠の中で極端に小さくなるため、幅に追従させて高さは成り行きにする。
+   角丸は画像側にも付ける。バナーが枠いっぱいに広がるので、ボタン側の角丸だけでは
+   画像の角が四角いまま残って見える。 */
 .gate-icon {
+  display: block;
   width: 100%;
-  max-width: 78px;
-  height: 78px;
-  object-fit: contain;
+  height: auto;
+  border-radius: 8px; /* .gate-item の 14px から padding 6px を引いた値。枠と同心円になる */
 }
 
 /* ---------- 初期ローディング(API取得完了まで全画面) ---------- */
