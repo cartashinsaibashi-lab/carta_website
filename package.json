@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "netlify dev",
-    "check": "node --check netlify/functions/events.mjs && node --check netlify/functions/event.mjs"
+    "check": "node --check netlify/functions/events.mjs && node --check netlify/functions/event.mjs && node --check netlify/functions/photos.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^8.1.0"

@@ -441,5 +441,85 @@ export function mockRequest(method, path, body) {
   return null;
 }
 
+// ---- 大会写真(Google Drive)の mock ------------------------------------
+// drive.mjs の listFolders / listImages が live で受け取るのと同じ形
+// (files.list の files[])を返す。これを通せば、フォルダ名の正規化・照合ロジックは
+// 実 API に繋いだときもそのまま動く。
+//
+// 写真があるのは「終了した大会」と「進行中の大会」だけにしてある。
+// 開催予定の大会には当然まだ写真が無く、写真タブが出ないことの確認になる。
+
+// mock フォルダ名は、わざと大会名と字形を変えてある。
+// 実運用では Drive のフォルダ名と PokerLens の大会名で記号やスペースが揃わないことが
+// 分かっているので(チルダ 3 種・スペースの有無)、正規化を通さないと一致しない状態を
+// ローカルでも再現しておく。ここが一致しなくなったら normalizeTitle の退行を疑う。
+//   'Wolf Main Event — Day 1A' → em dash を半角ハイフンに
+//   'Sunday Bounty'            → 半角スペースを全角スペースに
+function mockFolderLabel(name) {
+  return name.replace(/—/g, '-').replace(/ /g, '　');
+}
+
+export function mockDriveFolders() {
+  const folders = buildEvents(Date.now())
+    .filter((e) => e.status.code !== 'opened')
+    .map((e) => ({
+      id: 'mockfolder-' + e.id,
+      name: `${e.dailyDetails.startDate.slice(0, 10)} ${mockFolderLabel(e.name)}`,
+      mimeType: 'application/vnd.google-apps.folder',
+    }));
+  // 命名規約(先頭に YYYY-MM-DD)を満たさないフォルダ。
+  // photos.mjs が警告ログを出す経路をローカルでも通せるように 1 つ混ぜてある。
+  folders.push({
+    id: 'mockfolder-noname',
+    name: '写真バックアップ',
+    mimeType: 'application/vnd.google-apps.folder',
+  });
+  return folders;
+}
+
+// 1 フォルダぶんの画像。枚数はフォルダ ID から決めて、大会ごとに違う枚数にする
+// (グリッドの折り返しと、1 枚しかない場合の見え方を両方確認できるように)。
+export function mockDriveImages(folderId) {
+  const n = (hashCode(folderId) % 9) + 4;
+  return Array.from({ length: n }, (_, i) => {
+    // 3 枚に 1 枚は縦写真。グリッドが縦横混在で崩れないことを確認するため
+    const portrait = i % 3 === 2;
+    return {
+      id: `${folderId}-img-${i + 1}`,
+      name: `AS_${String(i + 1).padStart(3, '0')}.jpg`,
+      mimeType: 'image/jpeg',
+      imageMediaMetadata: {
+        width: portrait ? 1365 : 2048,
+        height: portrait ? 2048 : 1365,
+        // EXIF そのままの形式("YYYY:MM:DD HH:MM:SS")
+        time: `2026:05:27 1${String(i % 10)}:00:00`,
+      },
+    };
+  });
+}
+
+function hashCode(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0x7fffffff;
+  return h;
+}
+
+// mock 用のプレースホルダ画像(data URI の SVG)。
+// mock のファイル ID は実在しないので lh3.googleusercontent.com からは読めない。
+// 外部に取りに行かない自己完結の画像にして、ネットワーク無しでも写真タブの
+// レイアウト・拡大表示が確認できるようにする。
+export function mockPhotoSrc(file, width) {
+  const ratio = file.h && file.w ? file.h / file.w : 2 / 3;
+  const height = Math.round(width * ratio);
+  const hue = hashCode(file.id) % 360;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+    `<rect width="100%" height="100%" fill="hsl(${hue},38%,26%)"/>` +
+    `<text x="50%" y="50%" fill="hsl(${hue},45%,78%)" font-family="sans-serif" ` +
+    `font-size="${Math.round(width / 10)}" text-anchor="middle" dominant-baseline="middle">` +
+    `${file.name}</text></svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
 // テスト/デバッグ用。EVENTS は日付が「今」基準なので、参照時点で組み立てる。
 export const _fixtures = { buildEvents, LEVELS_BY_ID, PLAYERS_BY_ID, PAYOUTS_BY_ID };

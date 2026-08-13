@@ -2592,6 +2592,125 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   letter-spacing: 0.06em;
 }
 
+/* ---------- 大会写真(Photos タブ + 拡大表示) ----------
+ * サムネイルは Google の CDN から直接読む。枚数が読めない(1 枚の大会も 100 枚超の
+ * 大会もある)ため、列数は固定せず auto-fill でカードの幅なりに折り返す。 */
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.photo-thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  /* 縦写真と横写真が混ざるので、枠は正方形に固定して中身を切り抜く。
+     比率のまま並べると行の高さが揃わず、グリッドが階段状に崩れるため。 */
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-inset);
+  cursor: pointer;
+  transition: border-color .18s ease, transform .18s ease;
+}
+
+.photo-thumb:hover,
+.photo-thumb:focus-visible {
+  border-color: rgba(var(--accent-rgb), 0.75);
+  transform: translateY(-2px);
+}
+
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 拡大表示: 申込モーダルより手前に出す */
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 12px;
+  background: rgba(4, 3, 10, 0.92);
+  animation: fade-in .2s ease;
+}
+
+.photo-viewer[hidden] { display: none; }
+
+.photo-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+}
+
+.photo-image {
+  max-width: 100%;
+  /* キャプションぶんを引いて、縦長写真でも画面内に収める */
+  max-height: calc(100vh - 96px);
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.photo-caption {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.photo-nav,
+.photo-viewer-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.photo-nav:hover,
+.photo-viewer-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.photo-nav {
+  width: 44px;
+  height: 44px;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.photo-nav[hidden] { display: none; }
+
+.photo-viewer-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 38px;
+  height: 38px;
+  font-size: 22px;
+  line-height: 1;
+}
+
 /* ---------- その他 ---------- */
 
 .empty-message {
@@ -2781,6 +2900,16 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
 
   .modal-overlay { padding: 12px; align-items: end; }
   .modal { padding: 18px 16px 22px; max-height: 92vh; }
+
+  /* 写真: 画面が狭いので 1 行 3 枚前後まで詰める */
+  .photo-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+
+  /* 前後ボタンは画像の左右に置くと画像の幅を奪うので、画像に重ねる */
+  .photo-viewer { padding: 16px 8px; }
+  .photo-nav { position: absolute; top: 50%; transform: translateY(-50%); }
+  .photo-prev { left: 8px; }
+  .photo-next { right: 8px; }
+  .photo-image { max-height: calc(100vh - 80px); }
 }
 
 /* ---------- モーション設定の尊重 ---------- */

@@ -66,10 +66,13 @@ netlify/functions/
   events.mjs  GET /api/events           → POST /v1/event/search(ページング、historyDays 以降)
   event.mjs   GET /api/events/:id       → event + levels + players + payouts を並列取得
               GET /api/events/:id/:part → levels|structure|players|payouts の個別取得
+  photos.mjs  GET /api/photos/:id        → Google Drive から大会写真(下記)
+              GET /api/photos            → 親フォルダ直下のフォルダ一覧(運用確認用)
   prewarm.mjs cron */10 — トークンを温め、/api/events の CDN キャッシュを更新
   lib/pokerlens.mjs 認証 + トークンキャッシュ + 401 リトライ + mock/live の分岐
   lib/adapter.mjs   VenueEvent → フロントのデータ契約(唯一の変換層)
   lib/config.mjs    環境変数の集約(他のモジュールは process.env を直接読まない)
+  lib/drive.mjs     Drive API v3 + フォルダ名 → 大会の照合(正規化)
   lib/fixtures.mjs  mock モードの VenueEvent/EventLevel/EventPlayer サンプル
   lib/http.mjs      json() / handle()
 ```
@@ -139,6 +142,14 @@ Announcement タブの運用メモ(`Unlimited` / `Level 8 / 18:30` 等)なので
 
 **ストラクチャーの `type` は実データでは数値**(1=レベル, 2=休憩)。文字列 `'break'` と両対応にしてある。
 配列の並び順が進行順で、先頭(受付前)の休憩は表示しない。
+
+**大会写真は PokerLens に無い**(告知用の 1 枚だけで、実データでは過去 921 大会すべて空)。
+Google Drive の親フォルダを「リンクを知っている全員が閲覧可」で共有してもらい、その直下の
+**`YYYY-MM-DD 大会名`** というフォルダ名で大会と突き合わせる(`lib/drive.mjs`)。日付が必須なのは
+大会名だけでは 77% が同名で特定できないため。**チルダは Drive(U+301C)/ PokerLens(U+FF5E)/
+Google フォト(U+007E)で全部違い、NFKC は U+301C を変換しない** ので `normalizeTitle()` で
+明示的に統一している。画像は `lh3.googleusercontent.com/d/<fileId>=w<幅>` をブラウザが直接読む
+(BFF を通らないので転送量がかからない)。取得できないときは空配列を返し、写真タブが出ないだけにする。
 
 ## コード規約
 

@@ -116,6 +116,18 @@
     <div class="modal" id="modalBox" role="dialog" aria-modal="true" aria-label="Tournament Entry"></div>
   </div>
 
+  <!-- 大会写真の拡大表示。Photos タブのサムネイルを押すと app.js が中身を差し替えて表示する。
+       画像は Google の CDN から直接読むので、ここには URL しか入らない。 -->
+  <div class="photo-viewer" id="photoViewer" role="dialog" aria-modal="true" aria-label="Tournament photo" hidden>
+    <button class="photo-viewer-close" type="button" data-photo-action="close" aria-label="Close">×</button>
+    <button class="photo-nav photo-prev" type="button" data-photo-action="prev" aria-label="Previous photo">‹</button>
+    <figure class="photo-stage">
+      <img class="photo-image" id="photoImage" alt="">
+      <figcaption class="photo-caption" id="photoCaption"></figcaption>
+    </figure>
+    <button class="photo-nav photo-next" type="button" data-photo-action="next" aria-label="Next photo">›</button>
+  </div>
+
   <!-- api.js が /api/events を取得してグローバル(MOCK_EVENTS / CALENDAR)を用意し、
        app.js を注入して起動する。取得失敗時はダミーを出さず空/エラー表示にフォールバックする。 -->
   <script src="js/api.js"></script>

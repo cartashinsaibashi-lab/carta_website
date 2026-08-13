@@ -34,15 +34,40 @@
 │  lib/adapter.mjs   : VenueEvent → app.js データ契約 変換        │
 │  lib/config.mjs    : 環境変数集約 / mock・live 切替             │
 │  lib/fixtures.mjs  : mock モードのサンプル VenueEvent           │
+│  lib/drive.mjs     : Google Drive(大会写真)+ フォルダ名照合   │
 │  events.mjs  GET /api/events            → POST /v1/event/search │
 │  event.mjs   GET /api/events/:id        → GET  /v1/event/{id}   │
 │              GET /api/events/:id/:part  → levels|players|…      │
-│  秘密鍵は Netlify 環境変数(POKERLENS_*)                        │
-└───────────────┬─────────────────────────────────────────────┘
-                │ access_token: <session token>
-                ▼
-        PokerLens API  (api.pokerlens.net)
+│  photos.mjs  GET /api/photos/:id        → Drive files.list      │
+│              GET /api/photos            → フォルダ一覧(運用確認)│
+│  秘密鍵は Netlify 環境変数(POKERLENS_* / GOOGLE_API_KEY)       │
+└───────────────┬───────────────────────┬─────────────────────┘
+                │ access_token          │ key=<API キー>
+                ▼                       ▼
+        PokerLens API            Google Drive API
+      (api.pokerlens.net)     (www.googleapis.com/drive/v3)
 ```
+
+## 大会写真(Google Drive)
+
+PokerLens に大会写真を持たせる仕組みは無い(告知用の 1 枚だけで、実データでは過去 921 大会すべてで空)。
+そのため写真だけ外部ストレージに置く。詳細な経緯と運用は issue #28 / `netlify/functions/lib/drive.mjs` 冒頭。
+
+```
+Drive 親フォルダ(「リンクを知っている全員が閲覧可」で共有 = PHOTO_DRIVE_FOLDER_ID)
+  └ 「YYYY-MM-DD 大会名」のサブフォルダ  ← この名前で大会と突き合わせる
+       └ 写真
+```
+
+- 共有するのは**親フォルダだけ**。大会ごとのフォルダは API で自動的に見つけるので、
+  運営は新しい大会のフォルダを作って写真を入れるだけでよく、台帳(スプレッドシート)が要らない。
+- **開催日が無いと大会を特定できない**。過去 921 大会でユニークな大会名は 274 種類しかなく、
+  77% が同名(`FREEROLL` 147 件など)。`YYYY-MM-DD 大会名` なら 917/921 件が一意になる。
+- 大会名の記号は 3 か所で字形が違う(チルダが U+301C / U+FF5E / U+007E)。
+  NFKC は U+301C を変換しないため、`drive.mjs` の `normalizeTitle()` で明示的に統一している。
+- 画像は `lh3.googleusercontent.com/d/<fileId>=w<幅>` をブラウザが直接読む(BFF を通らない)。
+- フォルダ/ファイル一覧は Netlify Blobs に 10 分キャッシュ。Drive が落ちたら前回の内容を返し、
+  それも無ければ空配列 — 写真タブが出ないだけでサイトは通常どおり動く。
 
 ## 2 階層トークン
 
