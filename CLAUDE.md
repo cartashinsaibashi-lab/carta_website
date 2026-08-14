@@ -66,10 +66,11 @@ netlify/functions/
   events.mjs  GET /api/events           → POST /v1/event/search(ページング、historyDays 以降)
   event.mjs   GET /api/events/:id       → event + levels + players + payouts を並列取得
               GET /api/events/:id/:part → levels|structure|players|payouts の個別取得
-  prewarm.mjs cron */10 — トークンを温め、/api/events の CDN キャッシュを更新
+  prewarm.mjs cron */10 — トークンとランキングポイント索引を温め、/api/events の CDN キャッシュを更新
   lib/pokerlens.mjs 認証 + トークンキャッシュ + 401 リトライ + mock/live の分岐
   lib/adapter.mjs   VenueEvent → フロントのデータ契約(唯一の変換層)
   lib/config.mjs    環境変数の集約(他のモジュールは process.env を直接読まない)
+  lib/ranking.mjs   シリーズランキング → 「大会 → 順位 → ポイント」索引(下記)
   lib/fixtures.mjs  mock モードの VenueEvent/EventLevel/EventPlayer サンプル
   lib/http.mjs      json() / handle()
 ```
@@ -139,6 +140,16 @@ Announcement タブの運用メモ(`Unlimited` / `Level 8 / 18:30` 等)なので
 
 **ストラクチャーの `type` は実データでは数値**(1=レベル, 2=休憩)。文字列 `'break'` と両対応にしてある。
 配列の並び順が進行順で、先頭(受付前)の休憩は表示しない。
+
+**ランキングポイントは逆引きできない**。`/v1/ranking/{id}/points` のレコードが持つ
+`reference.id` は **VenueEvent の id ではない**(`/v1/event/{reference.id}` は 404)。実イベントへの変換は
+`GET /v1/ranking/{id}/event-by-reference/{reference.id}` だけで、**逆向き(イベント → 参照)は 404**。
+そのためランキング側から全件舐めて索引を作るしかない(`lib/ranking.mjs`)。実測で 6〜7 秒かかるので
+**リクエストの経路では作らず prewarm(10 分ごと)に作らせ、`/api/events/:id` は Blobs を読むだけ**にしてある。
+索引が無い間はポイントが出ないだけ。ポイントは整数とは限らない(46.8 / 83.2 など)。
+Day 1A/1B のフライトではなく `flight` が空の親イベントに紐づく。
+なお `/v1/ranking/{id}/players` の `position` は `{index, points, events}` のオブジェクトで、
+`orderBy: 'points'` は**最下位から**返る(順位順に出したいときも `orderBy: 'position'` を使う)。
 
 ## コード規約
 

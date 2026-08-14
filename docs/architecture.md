@@ -83,6 +83,7 @@
 | `live{}`(running) | `status.levelIndex` + 現在レベルのブラインド + `stats.totalTables` |
 | `registration{}`(future) | `subscription.buyins` + `stats.totalReservations` + `dailyDetails.playerAllowed` |
 | `results[]`(past) | `POST /v1/event/{id}/players`(EventPlayer[]) |
+| `points{}`(詳細のみ) | `POST /v1/ranking/{id}/points` を「大会 → 順位 → ポイント」に索引化(`lib/ranking.mjs`)。対象外の大会は `null` |
 
 金額・チップは**生の数値**で渡し、整形はビュー側(`yen()` / `num()`)が行う。
 

@@ -261,6 +261,9 @@
 
     /* Bounty 列は表示する範囲に賞金首が居るときだけ出す(全員空欄の列を作らない) */
     var hasBounty = shown.some(function (r) { return r.bounty > 0; });
+    /* Points 列はシリーズランキング対象の大会だけ。同じ理由で、対象外なら列ごと出さない。
+     * ポイントは Prize タブと同じ「順位 → ポイント」から引くので、両タブで値が揃う。 */
+    var showPts = hasPoints(ev);
 
     var body = shown.map(function (r) {
       var posCls = r.pos === 1 ? ' class="row-winner"' : '';
@@ -271,6 +274,7 @@
         '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + r.pos + '</span></td>' +
         '<td class="col-player">' + esc(r.player) + '</td>' +
         '<td class="col-prize">' + prize + '</td>' +
+        (showPts ? '<td class="col-points">' + ptsLabel(ev.points, r.pos) + '</td>' : '') +
         (hasBounty ? '<td class="col-prize">' + (r.bounty ? yen(r.bounty) : '—') + '</td>' : '') +
         '</tr>'
       );
@@ -282,7 +286,8 @@
       summaryItem('In the Money', ev.stats.itm + ' players') +
       '</div>' +
       '<div class="table-scroll"><table class="data-table results-table">' +
-      '<thead><tr><th>Rank</th><th>Player</th><th>Prize</th>' + (hasBounty ? '<th>Bounty</th>' : '') + '</tr></thead>' +
+      '<thead><tr><th>Rank</th><th>Player</th><th>Prize</th>' +
+      (showPts ? '<th>Points</th>' : '') + (hasBounty ? '<th>Bounty</th>' : '') + '</tr></thead>' +
       '<tbody>' + body + '</tbody>' +
       '</table></div>'
     );
@@ -596,8 +601,10 @@
       summaryItem('In the Money', ev.stats.itm > 0 ? ev.stats.itm + ' players' : 'TBD') +
       '</div>';
 
+    /* ポイントは確定ペイアウトがある大会にだけ添える。標準配分モデル(payouts 未設定)は
+     * 賞金そのものが見込み値なので、実際に付いたポイントを並べると意味が食い違う。 */
     var table = (ev.payouts && ev.payouts.length)
-      ? payoutTable(ev.payouts)
+      ? payoutTable(ev.payouts, hasPoints(ev) ? ev.points : null)
       : modelPayoutTable(pool, poolKnown);
 
     return summary + '<h3 class="detail-notes-title">Payout</h3>' + table;
@@ -622,8 +629,23 @@
     return p.description ? esc(p.description) : (p.amount ? yen(p.amount) : '—');
   }
 
-  function payoutTable(payouts) {
+  /* シリーズランキングのポイント表記。ポイントは整数とは限らないので(実データに
+   * 46.8 / 83.2 / 330.6 がある)、桁区切りだけ付けて小数はそのまま出す。
+   * ランキング対象の大会でも、入賞圏外の順位にはポイントが付かないので空欄になる。 */
+  function ptsLabel(points, pos) {
+    var v = points && points[pos];
+    return v == null ? '—' : num(v) + ' pt';
+  }
+
+  /* 大会にランキングポイントが付いているか。付いていない大会(シリーズ対象外)では
+   * Points 列そのものを出さない — 全行が空欄の列を作らないため。 */
+  function hasPoints(ev) {
+    return !!(ev.points && Object.keys(ev.points).length);
+  }
+
+  function payoutTable(payouts, points) {
     var hasShare = payouts.some(function (p) { return p.pct > 0; });
+    var showPts = !!points;
 
     var rows = payouts.map(function (p) {
       var posCls = p.pos === 1 ? ' class="row-winner"' : '';
@@ -633,13 +655,15 @@
         placeCell(p) +
         (hasShare ? '<td>' + (p.pct > 0 ? pctLabel(p.pct) : '—') + '</td>' : '') +
         '<td class="col-prize">' + prize + '</td>' +
+        (showPts ? '<td class="col-points">' + ptsLabel(points, p.pos) + '</td>' : '') +
         '</tr>'
       );
     }).join('');
 
     return (
       '<div class="table-scroll prize-scroll"><table class="data-table prize-table">' +
-      '<thead><tr><th>Place</th>' + (hasShare ? '<th>Share</th>' : '') + '<th>Prize</th></tr></thead>' +
+      '<thead><tr><th>Place</th>' + (hasShare ? '<th>Share</th>' : '') + '<th>Prize</th>' +
+      (showPts ? '<th>Points</th>' : '') + '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '</table></div>'
     );
@@ -1050,6 +1074,8 @@
           if (d.stats) ev.stats = d.stats;
           if (d.details) ev.details = d.details;
           if (d.payouts) ev.payouts = d.payouts;
+          // ランキングポイント(順位 → ポイント)。一覧には含まれず詳細でだけ返る
+          if (d.points) ev.points = d.points;
           // 一覧では levels を取らないため levelMinutes が 0 のことがある。
           // 詳細(= ストラクチャー Lv.1 由来)の値で上書きする。
           if (d.levelMinutes) ev.levelMinutes = d.levelMinutes;

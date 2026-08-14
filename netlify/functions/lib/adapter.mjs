@@ -6,7 +6,8 @@
 //     name, flight, tags[], year, month, day, dateLabel, venue,
 //     buyin, fee, guarantee, startingStack, levelMinutes, lateReg, reentry,
 //     gameType, description, details[]?,
-//     structure[], stats{}, live{}?(running), registration{}?(future), results[]?(past) }
+//     structure[], stats{}, live{}?(running), registration{}?(future), results[]?(past),
+//     points{順位:ポイント}?(シリーズランキング対象の大会のみ。詳細のみ) }
 //
 // 金額・チップは「生の数値」を渡す(整形はビュー側の yen()/num() が行う)。
 
@@ -345,13 +346,19 @@ export function buildSeats(players) {
 }
 
 // 詳細用(アコーディオン内の structure / results / live / seats をフルに埋める)
-export function toDetailEvent(ev, { levels, players, payouts } = {}) {
+export function toDetailEvent(ev, { levels, players, payouts, points } = {}) {
   const base = baseEvent(ev, levels);
   const lateRegLevel = base._lateRegLevel;
   delete base._lateRegLevel;
   const out = Object.assign({}, base);
   out.structure = buildStructure(levels, lateRegLevel);
   out.payouts = buildPayouts(payouts); // Prize タブ(空なら app.js 側でモデル表示にフォールバック)
+  /* シリーズランキングのポイント({ 順位: ポイント })。ランキング対象外の大会では null。
+   * Prize タブ(順位ごとの配点)と Results タブ(その選手が得たポイント)は、
+   * 現状どちらもこの同じ表を順位で引く(値は一致する)。
+   * 空オブジェクトではなく null に寄せておき、フロントの「あるときだけ列を出す」判定を
+   * 1 つの条件で書けるようにする。 */
+  out.points = points && Object.keys(points).length ? points : null;
   if (base.status === 'running') {
     out.live = buildLive(ev, levels);
     out.seats = buildSeats(players); // 座席No + プレイヤー名

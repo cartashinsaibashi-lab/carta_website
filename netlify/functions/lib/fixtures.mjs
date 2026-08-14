@@ -394,6 +394,38 @@ const PAYOUTS_BY_ID = {
   // 未設定の大会(payouts が空 = まだ組んでいない)は evt-utage-deep で再現
 };
 
+// ---- シリーズランキングのポイント ----------------------------------------
+// 実 API と同じ形で返す。特に「reference.id は VenueEvent の id ではない」という
+// 実 API の癖(逆引きできないので event-by-reference で変換するしかない)を
+// mock でも再現しておく。ここを素直に大会 ID にしてしまうと、lib/ranking.mjs の
+// 変換経路がローカルで一度も通らず、live に切り替えた瞬間に壊れる。
+const RANKING_ID = 'rk-wolf-2026-02';
+// ポイントを付ける大会は終了済みの 1 件だけ。他の大会では Prize / Results に
+// ポイント列が出ないこと(= ご要望の「取得できたときのみ表示」)を確認できる。
+const POINTS_EVENT_ID = 'evt-weekly-bounty';
+const POINTS_REF_ID = 'mockref-8b21';
+
+// 順位 → ポイント。実データに合わせて小数を混ぜてある(46.8 / 83.2 など)。
+const MOCK_POINTS = [
+  [1, 260], [2, 182], [3, 130], [4, 104], [5, 83.2],
+  [6, 67.6], [7, 57.2], [8, 46.8], [9, 39],
+];
+
+function rankingPoints() {
+  return MOCK_POINTS.map(([position, points]) => ({
+    date: '2026-05-28T13:00:00',
+    player: null, // includePlayerInfo=false のときの実 API の形に合わせる
+    points,
+    league: { id: LEAGUE_WOLF.id, name: 'WOLF SERIES of POKER 2026 #02' },
+    inTheMoney: true,
+    finalTable: position <= 9,
+    totalPayoutAmount: 0,
+    position,
+    entries: 82,
+    reference: { id: POINTS_REF_ID, description: 'Sunday Bounty', type: 'event' },
+  }));
+}
+
 // mock ルータ: 実 API と同じ path で呼ばれる想定。
 // イベントは呼び出しのたびに「今」を基準に組み立て直す。モジュールスコープに持つと
 // warm な関数インスタンスが再利用される間ずっと同じ日付が返り、
@@ -422,6 +454,36 @@ export function mockRequest(method, path, body) {
       totalNumberOfPages: 1,
       results,
     };
+  }
+
+  // --- ランキング ---
+  if (method === 'POST' && path === '/v1/ranking/search') {
+    return {
+      pageNumber: 1, pageSize: 1, totalNumberOfRecords: 1, totalNumberOfPages: 1,
+      results: [{
+        id: RANKING_ID,
+        name: 'WOLF 2026 #02',
+        code: null,
+        behaviour: { startDate: '2026-05-27T00:00:00', endDate: '2026-06-01T00:00:00', eventCount: 0, sex: 'none' },
+        stats: { totalEvents: 1, totalPlayers: MOCK_POINTS.length },
+        venue: { id: VENUE.id, name: VENUE.name },
+        periods: [],
+        rewards: [],
+      }],
+    };
+  }
+  if (method === 'POST' && path === `/v1/ranking/${RANKING_ID}/points`) {
+    const rows = rankingPoints();
+    // referenceId での絞り込み。対象外の大会を指定すると 0 件になる挙動も再現する
+    const wanted = body && body.referenceId;
+    const list = wanted ? rows.filter((r) => r.reference.id === wanted) : rows;
+    return {
+      pageNumber: 1, pageSize: list.length, totalNumberOfRecords: list.length,
+      totalNumberOfPages: 1, results: list,
+    };
+  }
+  if (method === 'GET' && path === `/v1/ranking/${RANKING_ID}/event-by-reference/${POINTS_REF_ID}`) {
+    return { id: POINTS_EVENT_ID };
   }
 
   const m = path.match(/^\/v1\/event\/([^/]+)(?:\/([^/]+))?$/);
