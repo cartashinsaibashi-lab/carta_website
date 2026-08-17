@@ -272,6 +272,12 @@ export function buildResults(players) {
          * Prize と並べると二重計上に見えるおそれがあるため、運営判断で Results から
          * 列ごと外した。API が返す値なので受け渡し自体は残してある。 */
         bounty: num(pay.bountyAmount),
+        /* 翌日へ持ち込むチップ数。日をまたぐ大会の通過日でだけ 0 より大きくなる。
+         * 実データ(#3 (1A) MAIN EVENT DAY 1A / 2026-05-27): 通過者 12 名が
+         * busted=false かつ chipsCount>0(436,500 / 394,000 …)。
+         * 最終日(#2 (2) BABY WOLF DAY 2 FINAL)は全員 busted=true で chipsCount は 0。
+         * この差を carryOver の判定に使う(toDetailEvent)。 */
+        chips: num(p.chipsCount),
       };
     })
     .filter((r) => r.pos > 0)
@@ -397,7 +403,21 @@ export function toDetailEvent(ev, { levels, players, payouts, points } = {}) {
     out.seats = buildSeats(players); // 座席No + プレイヤー名
   }
   if (base.status === 'future') out.registration = buildRegistration(ev);
-  if (base.status === 'past') out.results = buildResults(players);
+  if (base.status === 'past') {
+    out.results = buildResults(players);
+    /* 「通過日」= 日をまたぐ大会の最終日以外。チップを持って残っている人が居るかで判定する。
+     *
+     * behaviour.multiDay や dailyDetails.day / flight でも 2 日制なら判別できるが
+     * (実データ: Day1 は day=1 / flight="A"、最終日は day=2 / flight 空)、
+     * 3 日制の中日を取りこぼす。「翌日へ持ち越すチップがある」という事実そのもので
+     * 見るほうが確実で、日数構成に依存しない。
+     *
+     * 通過日は Results の Prize が実態と合わない。実データでは Day 1A のレコードに
+     * **最終日(5/31)の賞金**が紐づいており、Day 1A の順位(通過スタック順)と
+     * 噛み合わずちぐはぐな表示になっていた(#44)。そのため通過日は Prize ではなく
+     * チップを出し、Prize タブも隠す(フロント側で分岐)。 */
+    out.carryOver = out.results.some((r) => r.chips > 0);
+  }
   return out;
 }
 

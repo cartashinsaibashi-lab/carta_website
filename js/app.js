@@ -131,7 +131,10 @@
     if (ev.status === 'running') tabs.push({ key: 'live', label: 'Live' });
     if (ev.status === 'past') tabs.push({ key: 'results', label: 'Results' });
     tabs.push({ key: 'info', label: 'Info' });
-    tabs.push({ key: 'prize', label: 'Prize' });
+    /* 通過日(日をまたぐ大会の最終日以外)は Prize タブを出さない。
+     * この日のレコードに紐づくペイアウトは大会全体のもので、その日の成績ではないため
+     * 誤解を招く(#44。運営の指定)。賞金は最終日のカードで見る。 */
+    if (!ev.carryOver) tabs.push({ key: 'prize', label: 'Prize' });
     tabs.push({ key: 'structure', label: 'Structure' });
     /* 写真タブは Drive に写真があった大会にだけ出す。写真は運営が任意で上げるもので、
      * 大半の大会には無いため、常設すると「開いても空」のタブばかりになる。
@@ -255,6 +258,47 @@
   }
 
   function resultsPanel(ev) {
+    var summary =
+      '<div class="result-summary">' +
+      summaryItem('Total Entries', num(ev.stats.entries)) +
+      summaryItem('Prize Pool', yen(ev.stats.prizePool)) +
+      summaryItem('In the Money', ev.stats.itm + ' players') +
+      '</div>';
+
+    /* 通過日(日をまたぐ大会の最終日以外)は賞金ではなく翌日へ持ち込むチップを出す。 */
+    return summary + (ev.carryOver ? carryOverTable(ev) : finalResultTable(ev));
+  }
+
+  /* 通過日の結果表(Rank / Player / Chips)。
+   * その日に確定した賞金は存在しない。レコードに紐づく payout は**大会全体の最終成績**の
+   * ものなので(実データで Day 1A のレコードに最終日の賞金が入っていた)、出すと順位と
+   * 噛み合わずちぐはぐになる。代わりに翌日へ持ち込むスタックを出す(#44)。
+   *
+   * 表示するのは chips を持っている人 = 翌日へ進む人だけで、人数の上限は設けない。
+   * 通過者は全員が「翌日の参加者」なので、9 位などで切ると誰が残っているのか
+   * 分からなくなるため。実データでは 12 名程度。 */
+  function carryOverTable(ev) {
+    var body = ev.results.filter(function (r) { return r.chips > 0; }).map(function (r) {
+      var posCls = r.pos === 1 ? ' class="row-winner"' : '';
+      var medalCls = r.pos <= 3 ? ' pos-' + r.pos : '';
+      return (
+        '<tr' + posCls + '>' +
+        '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + r.pos + '</span></td>' +
+        '<td class="col-player">' + esc(r.player) + '</td>' +
+        '<td class="col-chips">' + num(r.chips) + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    return (
+      '<div class="table-scroll"><table class="data-table results-table">' +
+      '<thead><tr><th>Rank</th><th>Player</th><th>Chips</th></tr></thead>' +
+      '<tbody>' + body + '</tbody>' +
+      '</table></div>'
+    );
+  }
+
+  function finalResultTable(ev) {
     /* Prize は Prize タブ(GET /v1/event/{id}/payouts)の値に合わせる。
      * 結果一覧(POST /v1/event/{id}/players)が持つ payoutAmount とペイアウト表の
      * 金額が食い違うことがあり、正しいのはペイアウト表のほうなので、順位で引き当てて
@@ -290,11 +334,6 @@
       );
     }).join('');
     return (
-      '<div class="result-summary">' +
-      summaryItem('Total Entries', num(ev.stats.entries)) +
-      summaryItem('Prize Pool', yen(ev.stats.prizePool)) +
-      summaryItem('In the Money', ev.stats.itm + ' players') +
-      '</div>' +
       '<div class="table-scroll"><table class="data-table results-table">' +
       '<thead><tr><th>Rank</th><th>Player</th><th>Prize</th>' +
       (showPts ? '<th>Points</th>' : '') + '</tr></thead>' +
@@ -1211,6 +1250,9 @@
           if (d.payouts) ev.payouts = d.payouts;
           // ランキングポイント(順位 → ポイント)。一覧には含まれず詳細でだけ返る
           if (d.points) ev.points = d.points;
+          /* 通過日(日をまたぐ大会の最終日以外)かどうか。これも詳細でだけ返る。
+           * false も意味のある値なので、他の項目のような truthy 判定では取りこぼす。 */
+          if ('carryOver' in d) ev.carryOver = d.carryOver;
           // 一覧では levels を取らないため levelMinutes が 0 のことがある。
           // 詳細(= ストラクチャー Lv.1 由来)の値で上書きする。
           if (d.levelMinutes) ev.levelMinutes = d.levelMinutes;
@@ -1300,6 +1342,9 @@
     if (d.registration) ev.registration = d.registration;
     if (d.payouts) ev.payouts = d.payouts;
     if (d.levelMinutes) ev.levelMinutes = d.levelMinutes;
+    /* 通過日(日をまたぐ大会の最終日以外)かどうか。一覧には含まれず詳細でだけ返る。
+     * false も意味のある値なので、他の項目のような truthy 判定では取りこぼす。 */
+    if ('carryOver' in d) ev.carryOver = d.carryOver;
     ev._detail = 'loaded';
     return true;
   }
