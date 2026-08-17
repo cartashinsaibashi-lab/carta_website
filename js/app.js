@@ -767,13 +767,16 @@
     return m ? { date: m[1], time: m[2] } : { date: label || '', time: '' };
   }
 
-  var MONTH_MS = 30 * 24 * 3600 * 1000; // 「1ヶ月前」を30日で近似
-
-  /* 時刻ベースの3段階フェーズ(参照デザイン準拠)
-   *   開始1ヶ月前〜開始   : STARTS IN  <開始までのカウントダウン>
+  /* 時刻ベースの3段階フェーズ
+   *   開始前               : STARTS IN  <開始までのカウントダウン>
    *   開始〜レジクロ       : REG CLOSE IN <レジクロまでのカウントダウン>
    *   レジクロ後           : LIVE
-   * API が past を返したら最優先で CLOSED。target を持つ場合はカウントダウン表示。 */
+   * API が past を返したら最優先で CLOSED。target を持つ場合はカウントダウン表示。
+   *
+   * 参照デザインは「開始 1 ヶ月前から」だったが、日数の条件は外した(#46)。
+   * ウルフはシリーズごと 1〜2 ヶ月先にまとめて公開されるため、1 ヶ月で切ると
+   * 開催予定のカードが常に OPEN のままでカウントダウンが一度も出なかった
+   * (本番の開催予定 7 件がすべて 35〜40 日先で該当)。 */
   function liveLvSub(ev) { return ev.live ? 'Lv.' + ev.live.levelIndex : 'In progress'; }
 
   function futureOpenPhase(ev) {
@@ -791,11 +794,11 @@
     var regClose = ev.regCloseAt ? Date.parse(ev.regCloseAt) : NaN;
 
     if (isFinite(start)) {
-      if (now < start) {
-        // 開始前: 1ヶ月以内ならカウントダウン、それより先は通常の OPEN 表示
-        if (now >= start - MONTH_MS) return { cls: 's-startin', main: 'STARTS IN', sub: '', dot: true, target: start };
-        return futureOpenPhase(ev);
-      }
+      /* 開始前は日数にかかわらずカウントダウン。
+       * 受付が閉じている大会も同じで、CLOSED ではなくカウントダウンになる。
+       * 1 ヶ月以内の大会では従来からそうなっていたので、遠い大会をそれに揃えた形。
+       * 受付状況は Info タブで確認できる。 */
+      if (now < start) return { cls: 's-startin', main: 'STARTS IN', sub: '', dot: true, target: start };
       // 開始済み: レジクロ前ならカウントダウン、後(または不明)なら LIVE
       if (isFinite(regClose) && now < regClose) return { cls: 's-regclose', main: 'REG CLOSE IN', sub: '', dot: true, target: regClose };
       return { cls: 's-live', main: 'LIVE', sub: liveLvSub(ev), dot: true, target: null };
