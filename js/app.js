@@ -125,13 +125,17 @@
     var tabs = [];
     if (ev.status === 'running') tabs.push({ key: 'live', label: 'Live' });
     if (ev.status === 'past') tabs.push({ key: 'results', label: 'Results' });
-    /* 写真タブは Drive に写真があった大会にだけ出す。写真は運営が任意で上げるもので、
-     * 大半の大会には無いため、常設すると「開いても空」のタブばかりになる。
-     * ev.photos は /api/photos/:id を取得したあとに入る(取得前・0 枚なら出ない)。 */
-    if (ev.photos && ev.photos.length) tabs.push({ key: 'photos', label: 'Photos' });
     tabs.push({ key: 'info', label: 'Info' });
     tabs.push({ key: 'prize', label: 'Prize' });
     tabs.push({ key: 'structure', label: 'Structure' });
+    /* 写真タブは Drive に写真があった大会にだけ出す。写真は運営が任意で上げるもので、
+     * 大半の大会には無いため、常設すると「開いても空」のタブばかりになる。
+     * ev.photos は /api/photos/:id を取得したあとに入る(取得前・0 枚なら出ない)。
+     *
+     * 並びは必ず一番右。出たり出なかったりするタブなので、途中に挟むと大会ごとに
+     * Info / Prize / Structure の位置がずれて押し間違えるため(運営の指定)。
+     * 遅れて出てくるタブでもあり、後ろに足すぶんには既存タブの位置が動かない。 */
+    if (ev.photos && ev.photos.length) tabs.push({ key: 'photos', label: 'Photos' });
     return tabs;
   }
 
