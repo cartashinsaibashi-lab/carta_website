@@ -4,6 +4,7 @@
 // を行う。Netlify の cron で自動実行される(HTTP パスは持たない)。
 
 import { getToken } from './lib/pokerlens.mjs';
+import { warmPointsIndex } from './lib/ranking.mjs';
 import { config as appConfig } from './lib/config.mjs';
 
 export const config = { schedule: '*/10 * * * *' }; // 10 分ごと
@@ -25,7 +26,17 @@ export default async () => {
     results.push('token: ' + (e.message || 'error'));
   }
 
-  // 2) /api/events を叩いて CDN キャッシュを温める(本番の公開 URL がある場合)
+  // 2) ランキングポイントの索引を温める。
+  //    索引を作るにはランキング内の参照ぶんだけ event-by-reference を叩く必要があり
+  //    (逆引きの API が無いため。詳細は lib/ranking.mjs)、大会詳細の初回アクセスに
+  //    その往復を背負わせたくないので、ここで先に作って Blobs に置いておく。
+  try {
+    results.push('points: ' + (await warmPointsIndex()) + ' events');
+  } catch (e) {
+    results.push('points: ' + (e.message || 'error'));
+  }
+
+  // 3) /api/events を叩いて CDN キャッシュを温める(本番の公開 URL がある場合)
   const base = process.env.URL || process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL;
   if (base) {
     try {

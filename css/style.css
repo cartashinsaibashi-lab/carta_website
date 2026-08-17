@@ -1711,7 +1711,7 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 
 /* ---------- 賞金分配(Prize)パネル ---------- */
 
-/* 賞金表は列が少ない(Place / Share / Prize)ため、幅に上限を設けて囲みごと
+/* 賞金表は列が少ない(Place / Prize [/ Points])ため、幅に上限を設けて囲みごと
  * パネル中央に配置する。全列センター揃えで左右の余白を均等にする。 */
 .prize-scroll {
   max-width: 420px;
@@ -1728,8 +1728,21 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 .prize-table .col-pos { font-weight: 700; }
 .prize-table .col-prize { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.02em; }
 
-/* 標準配分モデルの注記も表に合わせて中央寄せ */
-.prize-scroll + .reg-note { margin-left: auto; margin-right: auto; text-align: center; }
+/* シリーズランキングのポイント。賞金の横に添える情報なので、金額より一段弱い見た目にして
+   「いくら貰えるか」を読み取る邪魔をしないようにする。 */
+.col-points {
+  font-family: var(--font-display);
+  font-size: 0.92em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.row-winner .col-points { color: var(--accent); }
+
+/* Prize タブの注記は表に合わせて中央寄せ。
+   賞金総額が不明な大会では表が出ず注記だけになるため、隣接セレクタ
+   (.prize-scroll + .reg-note)ではなく注記自身のクラスで指定する。 */
+.prize-note { margin-left: auto; margin-right: auto; text-align: center; }
 
 /* ---------- ライブ状況パネル ---------- */
 

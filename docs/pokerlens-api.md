@@ -144,7 +144,7 @@ WebSocket 等のプッシュ配信は standard 仕様には見当たらないた
 |---|---|---|
 | POST | `/v1/venue/search` / GET `/v1/venue/{id}` | 会場情報・会場ページ |
 | GET | `/v1/venue/image/{id}` | 会場画像 |
-| POST | `/v1/ranking/search` / GET `/v1/ranking/{id}` ほか | シリーズランキング表示(POY 等) |
+| POST | `/v1/ranking/search` / GET `/v1/ranking/{id}` ほか | シリーズランキング表示(POY 等)。**実装済み** — 下記「シリーズランキング」参照 |
 | GET | `/v1/domain/announcements` | お知らせ表示 |
 | POST | `/v1/device/favorites` | お気に入り登録(`DeviceFavoriteRequest { id, type, enabled }`)。モックの★ボタンはこれに接続する想定 |
 | POST | `/v1/venue/favorite/search` / `/v1/venue/{id}/favorite` | 会場のお気に入り |
@@ -183,3 +183,51 @@ WebSocket 等のプッシュ配信は standard 仕様には見当たらないた
 3. 申込(エントリー)をサイトから直接行えるか(player API の consume/ticket 経由か、外部フォームか)
 4. ライブ状況のリアルタイム配信手段(ポーリング頻度の上限、`/v1/player/listen/{id}` の仕様)
 5. 定員(cap)に相当するフィールドの所在
+
+---
+
+## シリーズランキング(実測 2026-08-14)
+
+会場側で「公開」に設定して初めて API に出てくる。設定前は `POST /v1/ranking/search` が
+**200 で `totalNumberOfRecords: 0`** を返す(権限エラーにはならないので、データが無いのか
+権限が無いのか応答からは区別できない)。公開後は 3 件が見えるようになった。
+
+| ランキング | 対象大会 | ポイント行数 | 参照数 |
+|---|---|---|---|
+| WOLF 2026 #02 | 24 | 244 | 24 |
+| 宴POS ver2 | 0 | 0 | 0 |
+| 宴POS ver3 | 19 | 901 | 19 |
+
+### エンドポイント
+
+| Method | Path | 用途 |
+|---|---|---|
+| POST | `/v1/ranking/search` | ランキング一覧(日付・状態の絞り込みは**無い**) |
+| GET | `/v1/ranking/{id}` / `/periods` | 個別・集計期間(periods は現状すべて空) |
+| POST | `/v1/ranking/{id}/players` | 順位表(218 名) |
+| POST | `/v1/ranking/{id}/points` | 大会ごと・順位ごとのポイント |
+| GET | `/v1/ranking/{id}/event-by-reference/{rid}` | 参照 → 実イベント ID の変換 |
+| POST | `/v1/ranking/{id}/rewards` | 賞品(現状すべて空) |
+
+### 踏んだ癖
+
+1. **`reference.id` は VenueEvent の id ではない。** ポイントのレコードが持つ
+   `reference{ id, description, type:'event' }` の `id` を `/v1/event/{id}` に投げると 404。
+   変換は `event-by-reference` を通す。
+2. **その変換は一方通行。** 実イベント ID を `event-by-reference` に渡すと 404。
+   「この大会のポイントをくれ」と直接は聞けないので、ランキング側から索引を作るしかない。
+3. **`/players` の `position` はオブジェクト**(`{index, points, events}`)。スカラーではない。
+4. **`orderBy: 'points'` は最下位から返る。** 順位順に出したいときも `orderBy: 'position'`。
+5. **`pageIndex` は 1 始まり。** 0 を渡すと 500(`ArgumentException`)。
+6. **ポイントは整数とは限らない**(46.8 / 83.2 / 330.6)。
+7. **Day 1A/1B ではなく親イベントに紐づく。** `#3 MAIN EVENT` のポイントは
+   `#3 (1A) MAIN EVENT DAY 1A` ではなく `flight` が空の親に付く。
+8. **全 218 名が `privacyAgree: false`。** API は本名も返すが、`player.description` に
+   `Y. Y.` のイニシャル表記が用意されている。公開サイトでは nickname かイニシャルを使う。
+
+### 認証まわりで確認したこと
+
+`POST /v1/security/authenticate` には `domainID` フィールドがあるが、BFF は送っていない。
+会場 ID を `domainID` に入れると 500(`NullReferenceException`)、`/v1/domain/announcements`
+は `null` を返すので、このキーはドメイン文脈を持たない。ランキングが見えなかった原因は
+これではなく、単に会場側が未公開だっただけだった。

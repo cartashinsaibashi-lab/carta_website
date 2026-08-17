@@ -6,7 +6,8 @@
 //     name, flight, tags[], year, month, day, dateLabel, venue,
 //     buyin, fee, guarantee, startingStack, levelMinutes, lateReg, reentry,
 //     gameType, description, details[]?,
-//     structure[], stats{}, live{}?(running), registration{}?(future), results[]?(past) }
+//     structure[], stats{}, live{}?(running), registration{}?(future), results[]?(past),
+//     points{順位:ポイント}?(シリーズランキング対象の大会のみ。詳細のみ) }
 //
 // 金額・チップは「生の数値」を渡す(整形はビュー側の yen()/num() が行う)。
 
@@ -240,6 +241,11 @@ export function buildResults(players) {
         player: pl.preferredName || pl.nickname || [pl.firstname, pl.lastname].filter(Boolean).join(' ') || '—',
         country: pl.countryName || '',
         prize: num(pay.payoutAmount),
+        /* バウンティ(賞金首)の獲得額。**フロントでは表示していない**。
+         * 実データでは過去 290 大会すべてで 0 で、バウンティ大会がまだ 1 件も無い。
+         * かつ payoutAmount がバウンティを含むのか別建てなのかをベンダーに確認できておらず、
+         * Prize と並べると二重計上に見えるおそれがあるため、運営判断で Results から
+         * 列ごと外した。API が返す値なので受け渡し自体は残してある。 */
         bounty: num(pay.bountyAmount),
       };
     })
@@ -251,6 +257,9 @@ export function buildResults(players) {
 // 実データ: [{ position, percentage, amount, payoutAmount, description, winner, ... }]
 //   - description は現物賞品の表記("4 Tickets" / "1E × 2,000P")。現金のみの大会では ""。
 //   - percentage はサテライト等では 0(配分率を使わずチケット固定のため)。
+//     実データでは 0 でない大会がまだ 1 件も無く、かつ運営から「Prize タブに % を出さない」
+//     指示が出たため、pct はフロントで表示していない(app.js の payoutTable() 参照)。
+//     API の応答をそのまま写す層なので、値自体は落とさず渡しておく。
 // 管理画面と同じく 1 順位 1 行のまま返す(同額が続いても結合しない)。
 export function buildPayouts(payouts) {
   const arr = Array.isArray(payouts) ? payouts : (payouts && payouts.results) || [];
@@ -345,13 +354,19 @@ export function buildSeats(players) {
 }
 
 // 詳細用(アコーディオン内の structure / results / live / seats をフルに埋める)
-export function toDetailEvent(ev, { levels, players, payouts } = {}) {
+export function toDetailEvent(ev, { levels, players, payouts, points } = {}) {
   const base = baseEvent(ev, levels);
   const lateRegLevel = base._lateRegLevel;
   delete base._lateRegLevel;
   const out = Object.assign({}, base);
   out.structure = buildStructure(levels, lateRegLevel);
   out.payouts = buildPayouts(payouts); // Prize タブ(空なら app.js 側でモデル表示にフォールバック)
+  /* シリーズランキングのポイント({ 順位: ポイント })。ランキング対象外の大会では null。
+   * Prize タブ(順位ごとの配点)と Results タブ(その選手が得たポイント)は、
+   * 現状どちらもこの同じ表を順位で引く(値は一致する)。
+   * 空オブジェクトではなく null に寄せておき、フロントの「あるときだけ列を出す」判定を
+   * 1 つの条件で書けるようにする。 */
+  out.points = points && Object.keys(points).length ? points : null;
   if (base.status === 'running') {
     out.live = buildLive(ev, levels);
     out.seats = buildSeats(players); // 座席No + プレイヤー名
