@@ -252,6 +252,9 @@ export function buildResults(players) {
 // 実データ: [{ position, percentage, amount, payoutAmount, description, winner, ... }]
 //   - description は現物賞品の表記("4 Tickets" / "1E × 2,000P")。現金のみの大会では ""。
 //   - percentage はサテライト等では 0(配分率を使わずチケット固定のため)。
+//     実データでは 0 でない大会がまだ 1 件も無く、かつ運営から「Prize タブに % を出さない」
+//     指示が出たため、pct はフロントで表示していない(app.js の payoutTable() 参照)。
+//     API の応答をそのまま写す層なので、値自体は落とさず渡しておく。
 // 管理画面と同じく 1 順位 1 行のまま返す(同額が続いても結合しない)。
 export function buildPayouts(payouts) {
   const arr = Array.isArray(payouts) ? payouts : (payouts && payouts.results) || [];

@@ -618,10 +618,6 @@
     return '<td class="col-pos">' + row.pos + '</td>';
   }
 
-  /* 確定ペイアウト表。
-   * Prize 列は description(現物賞品: "4 Tickets" / "1E × 2,000P")だけを表示する。
-   * description が無い大会(現金のみ)は従来どおり金額を出す。
-   * Share 列は配分率を持つ大会だけ出す(サテライトは percentage=0 のため列ごと省く)。 */
   /* ペイアウト 1 行分の Prize 表記。現物賞品(description: "4 Tickets" 等)があれば
    * それを、無ければ金額を出す。Prize タブと Results タブで同じ表記にするため、
    * 両方からこの関数を呼ぶ。 */
@@ -643,8 +639,15 @@
     return !!(ev.points && Object.keys(ev.points).length);
   }
 
+  /* 確定ペイアウト表(Place / Prize [/ Points])。
+   * Prize 列は description(現物賞品: "4 Tickets" / "1E × 2,000P")を優先し、
+   * 無い大会(現金のみ)は金額を出す — prizeLabel() 参照。
+   *
+   * 配分率(Share)列は出さない。「Prize タブに % を出さない」という運営の指示による
+   * (PR #35 のレビュー指摘)。もともと percentage を持つ大会だけ出す作りだったが、
+   * 実データでは percentage が常に 0 で(サンプル 20 大会すべて 0)、live では
+   * 一度も表示されない列だった。 */
   function payoutTable(payouts, points) {
-    var hasShare = payouts.some(function (p) { return p.pct > 0; });
     var showPts = !!points;
 
     var rows = payouts.map(function (p) {
@@ -653,7 +656,6 @@
       return (
         '<tr' + posCls + '>' +
         placeCell(p) +
-        (hasShare ? '<td>' + (p.pct > 0 ? pctLabel(p.pct) : '—') + '</td>' : '') +
         '<td class="col-prize">' + prize + '</td>' +
         (showPts ? '<td class="col-points">' + ptsLabel(points, p.pos) + '</td>' : '') +
         '</tr>'
@@ -662,21 +664,31 @@
 
     return (
       '<div class="table-scroll prize-scroll"><table class="data-table prize-table">' +
-      '<thead><tr><th>Place</th>' + (hasShare ? '<th>Share</th>' : '') + '<th>Prize</th>' +
+      '<thead><tr><th>Place</th><th>Prize</th>' +
       (showPts ? '<th>Points</th>' : '') + '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '</table></div>'
     );
   }
 
-  /* ペイアウト未設定(payouts が空)の大会向けの標準配分モデル */
+  /* ペイアウト未設定(payouts が空)の大会向けの標準配分モデル。
+   * 賞金総額に配分率を掛けた「目安の金額」だけを出し、配分率そのものは出さない
+   * (Prize タブに % を出さないという運営の指示。PR #35 のレビュー指摘)。
+   *
+   * 賞金総額が分からない大会では表ごと出さない。従来は全行の金額が「—」のまま
+   * 配分率だけが並び、開催予定の全大会(実データで 28 件すべて prizePool も
+   * guarantee も 0)が「架空の % が並ぶだけの表」になっていた。 */
   function modelPayoutTable(pool, poolKnown) {
+    if (!poolKnown) {
+      return '<p class="reg-note prize-note">* Payouts appear here once they are confirmed for this event.</p>';
+    }
+
     var model = [
       [1, 0.240], [2, 0.150], [3, 0.105], [4, 0.078], [5, 0.060],
       [6, 0.046], [7, 0.036], [8, 0.028], [9, 0.022]
     ];
     var restPct = 0.235;   // 10 位以降の合計
-    function prizeCell(v) { return poolKnown ? yen(Math.round(pool * v / 1000) * 1000) : '—'; }
+    function prizeCell(v) { return yen(Math.round(pool * v / 1000) * 1000); }
 
     var rows = model.map(function (p) {
       var posCls = p[0] === 1 ? ' class="row-winner"' : '';
@@ -684,26 +696,22 @@
       return (
         '<tr' + posCls + '>' +
         '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + p[0] + '</span></td>' +
-        '<td>' + pctLabel(p[1] * 100) + '</td>' +
         '<td class="col-prize">' + prizeCell(p[1]) + '</td>' +
         '</tr>'
       );
     }).join('');
     rows +=
       '<tr><td class="col-pos">10+</td>' +
-      '<td>' + pctLabel(restPct * 100) + '</td>' +
       '<td class="col-prize">' + prizeCell(restPct) + '</td></tr>';
 
     return (
       '<div class="table-scroll prize-scroll"><table class="data-table prize-table">' +
-      '<thead><tr><th>Place</th><th>Share</th><th>Prize</th></tr></thead>' +
+      '<thead><tr><th>Place</th><th>Prize</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
       '</table></div>' +
-      '<p class="reg-note">* Estimated payout model. The confirmed structure appears here once payouts are set for this event.</p>'
+      '<p class="reg-note prize-note">* Estimated payout model. The confirmed structure appears here once payouts are set for this event.</p>'
     );
   }
-
-  function pctLabel(v) { return v.toFixed(1).replace(/\.0$/, '') + '%'; }
 
   function panelHtml(ev, key) {
     switch (key) {
