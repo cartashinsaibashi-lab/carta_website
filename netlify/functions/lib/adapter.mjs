@@ -241,6 +241,11 @@ export function buildResults(players) {
         player: pl.preferredName || pl.nickname || [pl.firstname, pl.lastname].filter(Boolean).join(' ') || '—',
         country: pl.countryName || '',
         prize: num(pay.payoutAmount),
+        /* バウンティ(賞金首)の獲得額。**フロントでは表示していない**。
+         * 実データでは過去 290 大会すべてで 0 で、バウンティ大会がまだ 1 件も無い。
+         * かつ payoutAmount がバウンティを含むのか別建てなのかをベンダーに確認できておらず、
+         * Prize と並べると二重計上に見えるおそれがあるため、運営判断で Results から
+         * 列ごと外した。API が返す値なので受け渡し自体は残してある。 */
         bounty: num(pay.bountyAmount),
       };
     })

@@ -259,9 +259,7 @@
     var lastPlace = Math.max(RESULTS_MIN_PLACES, payoutLast);
     var shown = ev.results.filter(function (r) { return r.pos <= lastPlace; });
 
-    /* Bounty 列は表示する範囲に賞金首が居るときだけ出す(全員空欄の列を作らない) */
-    var hasBounty = shown.some(function (r) { return r.bounty > 0; });
-    /* Points 列はシリーズランキング対象の大会だけ。同じ理由で、対象外なら列ごと出さない。
+    /* Points 列はシリーズランキング対象の大会だけ出す(対象外なら全行空欄の列になるため)。
      * ポイントは Prize タブと同じ「順位 → ポイント」から引くので、両タブで値が揃う。 */
     var showPts = hasPoints(ev);
 
@@ -275,7 +273,6 @@
         '<td class="col-player">' + esc(r.player) + '</td>' +
         '<td class="col-prize">' + prize + '</td>' +
         (showPts ? '<td class="col-points">' + ptsLabel(ev.points, r.pos) + '</td>' : '') +
-        (hasBounty ? '<td class="col-prize">' + (r.bounty ? yen(r.bounty) : '—') + '</td>' : '') +
         '</tr>'
       );
     }).join('');
@@ -287,7 +284,7 @@
       '</div>' +
       '<div class="table-scroll"><table class="data-table results-table">' +
       '<thead><tr><th>Rank</th><th>Player</th><th>Prize</th>' +
-      (showPts ? '<th>Points</th>' : '') + (hasBounty ? '<th>Bounty</th>' : '') + '</tr></thead>' +
+      (showPts ? '<th>Points</th>' : '') + '</tr></thead>' +
       '<tbody>' + body + '</tbody>' +
       '</table></div>'
     );
