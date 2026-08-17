@@ -468,6 +468,24 @@ function buildEvents(now) {
       totalPayoutAmount: 2400000, totalPayouts: 24, totalTables: 0,
     },
   }),
+  /* 開始まで 1 ヶ月以上ある大会。以前は 30 日より先だとカウントダウンを出さず OPEN 表示に
+   * なっていた(#46)。ウルフはシリーズごと 1〜2 ヶ月先に公開されるため常にこの状態で、
+   * カウントダウンが一度も出ていなかった。閾値を外した今も出ることを確認できるように残す。 */
+  venueEvent({
+    id: 'evt-wolf-series',
+    name: 'Wolf Series Opener',
+    league: LEAGUE_WOLF,
+    statusCode: 'opened',
+    startDate: jstDayAt(now, 45, 13, 0),
+    levelMinutes: 40,
+    lateRegLevel: 8,
+    guarantee: 5000000,
+    cap: 200,
+    subscriptionClose: jstDayAt(now, 45, 16, 40),
+    description: 'シリーズ開幕戦。',
+    buyin: buyin(8000, 1000, 30000, 'Standard'),
+    stats: { totalReservations: 12, guaranteedAmount: 5000000 },
+  }),
   ];
 }
 
