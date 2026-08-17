@@ -141,6 +141,21 @@ Announcement タブの運用メモ(`Unlimited` / `Level 8 / 18:30` 等)なので
 
 **Buy-in 表示は `subscription.buyin.fee` のみ**(カード・Info タブとも本体/合計は出さない)。
 
+**日をまたぐ大会の「通過日」は Prize を出してはいけない**。Day 1A などのレコードに紐づく
+`payout` は**大会全体の最終成績の賞金**で、その日の成績ではない。実データ
+(`#3 (1A) MAIN EVENT DAY 1A` / 2026-05-27)では 1 位 ¥60,000・3 位 ¥600,000 と、
+その日の順位(通過スタック順)と噛み合わない値が入っていた(payout の日付も最終日の 5/31)。
+代わりに翌日へ持ち込むチップ(`EventPlayer.chipsCount`)を出す(#44)。
+**判定は `results` に `chips > 0` の人が居るか**(adapter の `carryOver`)。
+実データで Day 1A は通過者 12 名が `busted=false` かつ `chipsCount>0`、最終日は全員
+`busted=true` で `chipsCount` が 0。`behaviour.multiDay` や `dailyDetails.day / flight` でも
+2 日制なら判別できるが、3 日制の中日を取りこぼすのでチップの有無で見ている。
+
+**詳細でだけ返る項目のマージ箇所は 2 つある** — `maybeLoadDetail()` の中と `applyDetail()`。
+片方だけ足すとカードを開いたときには反映されずライブ更新時だけ効く(実際に踏んだ)。
+`points` / `carryOver` のように **false や 0 が意味を持つ値は `'key' in d` で判定する**
+(truthy 判定だと取りこぼす)。
+
 **ストラクチャーの `type` は実データでは数値**(1=レベル, 2=休憩)。文字列 `'break'` と両対応にしてある。
 配列の並び順が進行順で、先頭(受付前)の休憩は表示しない。
 

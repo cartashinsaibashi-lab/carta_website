@@ -152,6 +152,27 @@ function makePlayers(n) {
   }));
 }
 
+/* 日をまたぐ大会の通過日(Day 1A 等)の EventPlayer[]。**実データの形を再現する**。
+ *   - 上位 advancing 名は busted=false + chipsCount>0(翌日へ持ち込むスタック)
+ *   - 残りはその日に敗退した人で chipsCount=0
+ *   - **通過者の payout には最終日の賞金が入っている**。実データ(#3 (1A) MAIN EVENT
+ *     DAY 1A)では 1 位 ¥60,000 / 3 位 ¥600,000 と、通過順位(スタック順)と噛み合わない
+ *     値が入っていた。この「ちぐはぐさ」も再現しておかないと、Prize を出してはいけない
+ *     理由が mock から読み取れない(#44)。 */
+function makeCarryOverPlayers(total, advancing) {
+  const finalPrizes = [60000, 200000, 600000, 65000, 0, 50000, 0, 0, 90000, 0, 0, 0];
+  return Array.from({ length: total }, (_, i) => {
+    const alive = i < advancing;
+    return {
+      position: i + 1,
+      busted: !alive,
+      chipsCount: alive ? (advancing - i) * 35000 + 60000 : 0,
+      player: makePlayer(i),
+      payout: { payoutAmount: alive ? finalPrizes[i] || 0 : 0, bountyAmount: 0 },
+    };
+  });
+}
+
 // 進行中の大会の着席者(Live タブの座席表用)。
 // 実データと同じく tableIndex / seatIndex / chipsCount を持ち、busted は false。
 // 一部の席は飛ばして、バストで抜けた空席がある状態を再現する。
@@ -352,6 +373,29 @@ function buildEvents(now) {
       totalPayoutAmount: 2400000, totalPayouts: 24, totalTables: 0,
     },
   }),
+  /* 日をまたぐ大会の通過日(Day 1A)。最終日以外は Results に賞金ではなく
+   * 翌日へ持ち込むチップを出し、Prize タブを隠す(#44)。その分岐を mock でも通す。
+   * makeCarryOverPlayers() で、実データ同様「payout には最終日の賞金が入っていて
+   * 通過順位と噛み合わない」状態も再現してある。 */
+  venueEvent({
+    id: 'evt-wolf-day1a',
+    name: 'Wolf Championship — Day 1A',
+    league: LEAGUE_WOLF,
+    statusCode: 'closed',
+    startDate: jstDayAt(now, -6, 12, 30),
+    flight: 'A',
+    multiDay: true,
+    levelMinutes: 40,
+    lateRegLevel: 9,
+    guarantee: 6000000,
+    description: '12名が Day 2 に進出します。',
+    buyin: buyin(30000, 3000, 30000, 'Standard'),
+    allowRebuy: true,
+    stats: {
+      totalEntries: 66, totalPlayers: 12, averageChipsCount: 275000,
+      totalChipsCount: 3300000, totalPayoutAmount: 6000000, totalPayouts: 32, totalTables: 0,
+    },
+  }),
   ];
 }
 
@@ -364,6 +408,7 @@ const LEVELS_BY_ID = {
     ],
     40, 4, 15
   ),
+  'evt-wolf-day1a': LEVELS_STANDARD,
   'evt-utage-deep': LEVELS_STANDARD,
   'evt-wolf-sat': LEVELS_TURBO,
   'evt-weekly-bounty': LEVELS_TURBO,
@@ -372,6 +417,7 @@ const LEVELS_BY_ID = {
 const PLAYERS_BY_ID = {
   'evt-weekly-bounty': makePlayers(10),
   'evt-wolf-main': makeSeatedPlayers(138, 9),   // 進行中: 9 max × 16 卓ぶんの着席者
+  'evt-wolf-day1a': makeCarryOverPlayers(66, 12), // 通過日: 66 エントリー中 12 名が翌日へ
 };
 
 const PAYOUTS_BY_ID = {
@@ -390,6 +436,13 @@ const PAYOUTS_BY_ID = {
   'evt-weekly-bounty': makePayouts([
     [1, 38.7, 928800], [2, 25.8, 619200], [3, 16.1, 386400],
     [4, 11.3, 271200], [5, 8.1, 194400],
+  ]),
+  /* 通過日(Day 1A)にも大会全体のペイアウト表が紐づく。実データもそうなっており、
+   * 「payouts はあるのに Prize タブを出さない」という #44 の分岐を mock で通すために要る。 */
+  'evt-wolf-day1a': makePayouts([
+    [1, 30, 1800000], [2, 20, 1200000], [3, 13, 780000], [4, 9, 540000],
+    [5, 7, 420000], [6, 5.5, 330000], [7, 4.5, 270000], [8, 3.5, 210000],
+    [9, 2.5, 150000], [10, 2.5, 150000], [11, 1.5, 90000], [12, 1, 60000],
   ]),
   // 未設定の大会(payouts が空 = まだ組んでいない)は evt-utage-deep で再現
 };

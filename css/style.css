@@ -1691,7 +1691,10 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 .pos-medal.pos-2 { background: linear-gradient(135deg, #d9dee8, #8c96a8); color: #14100a; }
 .pos-medal.pos-3 { background: linear-gradient(135deg, #d9a06b, #96602f); color: #14100a; }
 
-.results-table .col-prize { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.02em; }
+/* Chips(通過日の持ち込みスタック)は Prize と同じ位置・同じ重みで出す。
+   その日の「成績」を示す列という役割が同じなので、見た目を変える理由が無い。 */
+.results-table .col-prize,
+.results-table .col-chips { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.02em; }
 
 .player-country {
   font-size: 10px;
