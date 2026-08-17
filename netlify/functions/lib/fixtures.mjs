@@ -97,6 +97,61 @@ function makeLevels(blinds, minutes, breakEvery, breakMinutes) {
   return rows;
 }
 
+/* ---------- 繰り上げ動作を目で見るための mock 専用の大会 ----------
+ * レベルが終わってからサーバーが追いつくまでの「遅れ」を再現する。実データでは
+ * レベル間で 9 秒 / 休憩に入るときで 22 秒(2026-08-17 の本番で実測)。その間クライアントは
+ * 手元のストラクチャーで繰り上げて表示する(app.js の projectedStep())。
+ * 実際の 15〜40 分レベルを待たずに確認できるよう、**15 秒**ごとに項目が切り替わり、
+ * 切り替わってから **10 秒**は前の項目を残り 0 秒で返し続ける大会を用意した。
+ *
+ * minutes が 0.25(= 15 秒)なのでストラクチャータブには 0.25 min と出るが、
+ * mock 専用の確認用データなので割り切っている。 */
+const DEMO_STEP_SEC = 15;   // 1 項目の長さ
+const DEMO_LAG_SEC = 10;    // 0 になってからサーバーが次を返すまでの遅れ
+
+const DEMO_LEVELS = (function () {
+  const rows = [];
+  let id = 0;
+  let levelIndex = 0;
+  const mins = DEMO_STEP_SEC / 60;
+  const push = (r) => rows.push(Object.assign({ id: (id += 1) }, r));
+  const breakRow = () => ({ index: 0, type: 2, smallBlind: 0, bigBlind: 0, ante: 0, minutes: mins });
+
+  push(breakRow()); // 受付前の休憩(実データに合わせる。buildStructure が落とす)
+  /* レベルを 16 個並べて 4 つごとに休憩を挟む(= 19 項目 / 一巡 約 4 分 45 秒)。
+   * 一巡して Lv.1 に戻る瞬間だけは、繰り上げ先が無くなるので 00:00 が数秒残る
+   * (最終レベルに達したときの正規のフォールバック)。ここを踏みにくくするために
+   * 一巡を長めに取ってある。 */
+  const blinds = [
+    [100, 200, 200], [200, 400, 400], [300, 600, 600], [500, 1000, 1000],
+    [800, 1600, 1600], [1000, 2000, 2000], [1500, 3000, 3000], [2000, 4000, 4000],
+    [3000, 6000, 6000], [4000, 8000, 8000], [5000, 10000, 10000], [8000, 16000, 16000],
+    [10000, 20000, 20000], [15000, 30000, 30000], [20000, 40000, 40000], [30000, 60000, 60000],
+  ];
+  blinds.forEach((b, i) => {
+    levelIndex += 1;
+    push({ index: levelIndex, type: 1, smallBlind: b[0], bigBlind: b[1], ante: b[2], minutes: mins });
+    if ((i + 1) % 4 === 0 && i !== blinds.length - 1) push(breakRow());
+  });
+  return rows;
+})();
+
+/* 「今どの項目にいるべきか」を時刻から決める。切り替わってから DEMO_LAG_SEC 秒のあいだは
+ * **前の項目を残り 0 秒で返す** — ここがクライアントの繰り上げが働く区間。
+ * 一巡したら Lv.1 に戻るので、何度でも観察できる。 */
+function demoStatus(now) {
+  const cyc = DEMO_LEVELS.slice(1); // 受付前の休憩を除いた進行順
+  const period = cyc.length * DEMO_STEP_SEC;
+  const t = Math.floor(now / 1000) % period;
+  let i = Math.floor(t / DEMO_STEP_SEC);
+  let elapsed = t % DEMO_STEP_SEC;
+  if (elapsed < DEMO_LAG_SEC) {
+    i = (i - 1 + cyc.length) % cyc.length;
+    elapsed = DEMO_STEP_SEC; // 残り 0 秒のまま据え置く
+  }
+  return { levelId: cyc[i].id, levelIndex: cyc[i].index, elapsedSeconds: elapsed };
+}
+
 const BLINDS_STANDARD = [
   [100, 200, 200], [200, 300, 300], [200, 400, 400], [300, 600, 600],
   [400, 800, 800], [500, 1000, 1000], [1000, 1500, 1500], [1000, 2000, 2000],
@@ -281,6 +336,7 @@ function buildEvents(now) {
   const LIVE_LEVEL_MINUTES = 40;
   const liveStart = lastOccurrenceAt(now, 11);
   const liveElapsed = Math.floor((now - liveStart) / 1000) % (LIVE_LEVEL_MINUTES * 60);
+  const demo = demoStatus(now); // 繰り上げ確認用(15 秒ごとに切り替わり、10 秒遅れて追いつく)
 
   return [
   venueEvent({
@@ -311,6 +367,29 @@ function buildEvents(now) {
       totalEntries: 212, totalPlayers: 138, averageChipsCount: 46080,
       totalChipsCount: 6360000, totalPayoutAmount: 6360000, totalPayouts: 27,
       totalTables: 18, guaranteedAmount: 10000000,
+    },
+  }),
+  /* 繰り上げ確認用(mock 専用)。15 秒ごとに項目が切り替わり、切り替わってから 10 秒は
+   * サーバーが前の項目を返し続ける。その 10 秒のあいだ、タイマーが 00:00 で止まらずに
+   * 次のレベル / 休憩へ繰り上がることを目で確認できる。詳細は demoStatus() のコメント。 */
+  venueEvent({
+    id: 'evt-demo-rollover',
+    name: 'Rollover Demo (mock only)',
+    league: LEAGUE_OTHER,
+    statusCode: 'running',
+    startDate: jstWallClock(liveStart),
+    statusDate: jstInstant(now),
+    levelMinutes: DEMO_STEP_SEC / 60,
+    levelIndex: demo.levelIndex,
+    levelId: demo.levelId,
+    elapsedSeconds: demo.elapsedSeconds,
+    lateRegLevel: 4,
+    guarantee: 0,
+    description: '繰り上げ動作の確認用。15 秒ごとにレベルが切り替わります。',
+    buyin: buyin(5000, 500, 20000, 'Demo'),
+    stats: {
+      totalEntries: 24, totalPlayers: 12, averageChipsCount: 40000,
+      totalChipsCount: 480000, totalPayoutAmount: 0, totalPayouts: 3, totalTables: 2,
     },
   }),
   /* 休憩中の大会。実データでは休憩に入ると status.levelIndex も status.level.index も 0 に
@@ -401,6 +480,7 @@ const LEVELS_BY_ID = {
     ],
     40, 4, 15
   ),
+  'evt-demo-rollover': DEMO_LEVELS,
   'evt-utage-break': LEVELS_STANDARD,
   'evt-utage-deep': LEVELS_STANDARD,
   'evt-wolf-sat': LEVELS_TURBO,

@@ -199,8 +199,16 @@ function buildLive(ev, levels) {
     }
   }
 
+  /* structure[] 上の現在位置。フロントがレベル終了後、サーバーの更新を待たずに
+   * 次の項目へ繰り上げるために使う(実測でレベル間 9 秒・休憩へ 22 秒、00:00 のまま
+   * 止まっていた。内訳は CDN キャッシュと PokerLens 側の反映待ちで、どちらも取得側では
+   * 縮められない)。buildStructure() は先頭の受付前休憩を落とすので、その分だけずらす。 */
+  const firstLevelPos = arr.findIndex((l) => !isBreak(l));
+  const stepIndex = pos >= 0 && firstLevelPos >= 0 && pos >= firstLevelPos ? pos - firstLevelPos : null;
+
   return {
     levelIndex: idx,
+    stepIndex: stepIndex,
     /* 休憩中であることをフロントに伝える。休憩行の smallBlind/bigBlind/ante は
      * 実データでも 0 なので、そのまま出すと「0 / 0 ante 0」になる。
      * フロントは isBreak のときブラインド行を出さず、見出しを BREAK にする。 */
