@@ -307,8 +307,89 @@
     );
   }
 
-  function livePanel(ev) {
+  /* ---------- レベル終了後のローカル繰り上げ ----------
+   * タイマーが 00:00 になっても、サーバーが次のレベルを返すまで表示が止まって見える。
+   * 実測(2026-08-17 の本番、3 秒間隔): レベル間で 9 秒 / 休憩に入るときで 22 秒。
+   * 内訳は /api/events/:id の CDN キャッシュ(最大 10 秒)と PokerLens 側の反映待ちで、
+   * どちらも取得側の工夫では縮められない(no-store はブラウザキャッシュしか迂回しない。
+   * キャッシュ避けクエリを付けない判断は意図的 — pollLiveOnce() のコメント参照)。
+   *
+   * そこで手元の ev.structure(進行順のレベル・休憩と各長さ)で先に進めておき、
+   * 実データが届いたら上書きする。会場が時計を手動で止めたときはその間だけ先行するが、
+   * 次の取得(最長 25 秒)で戻る。 */
+
+  /* 現在の項目が終わっているとき、structure 上で「今どこにいるはずか」を返す。
+   * まだ終わっていない / 繰り上げられない(stepIndex が無い・末尾に到達・長さ不明)なら null。 */
+  function projectedStep(ev) {
     var lv = ev.live;
+    var steps = ev.structure || [];
+    if (!lv || lv.endsAt == null || lv.stepIndex == null) return null;
+    var now = Date.now();
+    if (lv.endsAt > now) { ev._rollover = null; return null; }
+
+    /* 繰り上げの基準。一度繰り上げたらその予定を使い回す。
+     * サーバーがまだ前の項目を返している間、endsAt は取得のたびに「今」へずれていく
+     * (残りが 0 のとき endsAt = status.date = 応答時刻になるため)。毎回サーバー値から
+     * 計算し直すと、繰り上げ後のカウントダウンが追い取得のたびに数秒巻き戻って見える。
+     * サーバーが実際に次の項目へ進めば stepIndex が変わるので、そこで基準を取り直す。 */
+    var pin = ev._rollover;
+    var i = pin && pin.fromStep === lv.stepIndex ? pin.index : lv.stepIndex;
+    var end = pin && pin.fromStep === lv.stepIndex ? pin.endsAt : lv.endsAt;
+
+    /* タブを長く離れていた等で複数の項目をまたいで遅れていることがあるので、
+     * 現在時刻を追い越すまで進める。長さ 0 の項目は進めないので打ち切る(無限ループ防止)。 */
+    while (end <= now) {
+      i += 1;
+      if (i >= steps.length) { ev._rollover = null; return null; }
+      var mins = steps[i].minutes || 0;
+      if (mins <= 0) { ev._rollover = null; return null; }
+      end += mins * 60000;
+    }
+    ev._rollover = { fromStep: lv.stepIndex, index: i, endsAt: end };
+    return { index: i, step: steps[i], endsAt: end };
+  }
+
+  /* 表示に使うライブ状態。基本はサーバーの値をそのまま返し、繰り上げが要るときだけ
+   * 差し替えた複製を返す(ev.live 自体は書き換えない — 次の取得結果と比較するため)。
+   * nextLevel / breakAt の作り方は adapter.mjs の buildLive() に合わせてある。 */
+  function liveView(ev) {
+    var p = projectedStep(ev);
+    if (!p) return ev.live;
+
+    var steps = ev.structure;
+    var s = p.step;
+    var isBreak = s.type === 'break';
+    var k;
+
+    var nextLevel = '';
+    for (k = p.index + 1; k < steps.length; k++) {
+      if (steps[k].type !== 'break') { nextLevel = 'SB ' + steps[k].sb + ' / BB ' + steps[k].bb; break; }
+    }
+
+    var breakAt = null, nextBreak = '', ms = p.endsAt;
+    for (k = p.index + 1; k < steps.length; k++) {
+      if (steps[k].type === 'break') { breakAt = ms; nextBreak = steps[k].minutes + ' min break'; break; }
+      ms += (steps[k].minutes || 0) * 60000;
+    }
+
+    return {
+      levelIndex: isBreak ? 0 : s.level,
+      stepIndex: p.index,
+      isBreak: isBreak,
+      sb: isBreak ? 0 : s.sb,
+      bb: isBreak ? 0 : s.bb,
+      ante: isBreak ? 0 : s.ante,
+      remainingSec: Math.max(0, Math.round((p.endsAt - Date.now()) / 1000)),
+      endsAt: p.endsAt,
+      nextLevel: nextLevel,
+      nextBreak: nextBreak,
+      breakAt: breakAt,
+      tables: ev.live.tables
+    };
+  }
+
+  function livePanel(ev) {
+    var lv = liveView(ev);
     var seatsHtml = seatingHtml(ev);
     /* 次の休憩は「あと何分か」が知りたい情報なので、休憩の長さではなく
      * 休憩開始までのカウントダウンを出す。breakAt(絶対時刻)を持たない場合
@@ -1900,6 +1981,11 @@
             var idx = cur && cur.live ? cur.live.levelIndex : -1;
             if (levelEndPendingFor !== idx) {
               levelEndPendingFor = idx;
+              /* 実データが届くまでの間、手元のストラクチャーで次の項目へ繰り上げて描き直す。
+               * これをしないと取得が返るまで 00:00 のまま止まって見える(実測 9〜22 秒)。
+               * 繰り上げられないとき(最終レベル等)は描き直さない — endsAt が過去のままの
+               * パネルを作り直すと、1 秒後にまたここへ来て毎秒描き直すことになるため。 */
+              if (cur && projectedStep(cur)) updateLivePanel(livePollId);
               refetchAfterLevelEnd(livePollId, idx, 1);
             }
           }
