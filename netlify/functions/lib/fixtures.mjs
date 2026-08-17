@@ -489,6 +489,24 @@ function buildEvents(now) {
       totalPayoutAmount: 2400000, totalPayouts: 24, totalTables: 0,
     },
   }),
+  /* 開始まで 1 ヶ月以上ある大会。以前は 30 日より先だとカウントダウンを出さず OPEN 表示に
+   * なっていた(#46)。ウルフはシリーズごと 1〜2 ヶ月先に公開されるため常にこの状態で、
+   * カウントダウンが一度も出ていなかった。閾値を外した今も出ることを確認できるように残す。 */
+  venueEvent({
+    id: 'evt-wolf-series',
+    name: 'Wolf Series Opener',
+    league: LEAGUE_WOLF,
+    statusCode: 'opened',
+    startDate: jstDayAt(now, 45, 13, 0),
+    levelMinutes: 40,
+    lateRegLevel: 8,
+    guarantee: 5000000,
+    cap: 200,
+    subscriptionClose: jstDayAt(now, 45, 16, 40),
+    description: 'シリーズ開幕戦。',
+    buyin: buyin(8000, 1000, 30000, 'Standard'),
+    stats: { totalReservations: 12, guaranteedAmount: 5000000 },
+  }),
   /* 日をまたぐ大会の通過日(Day 1A)。最終日以外は Results に賞金ではなく
    * 翌日へ持ち込むチップを出し、Prize タブを隠す(#44)。その分岐を mock でも通す。
    * makeCarryOverPlayers() で、実データ同様「payout には最終日の賞金が入っていて
@@ -693,9 +711,15 @@ function mockFolderLabel(name) {
   return name.replace(/—/g, '-').replace(/ /g, '　');
 }
 
+/* 親フォルダ直下のフォルダ一覧。
+ * **開催予定の大会にもフォルダを作る**。告知画像を先に載せる運用があるため、
+ * フロントは状態で絞らず写真を取りに行くようになった(#48)。以前は
+ * `status.code !== 'opened'` で除外していて、開催予定の経路をローカルで確認できなかった。
+ * ただし evt-wolf-sat だけは意図的にフォルダを作らない —「写真 0 枚 → Photos タブが
+ * 出ない」ケースの確認用に 1 件残しておく必要があるため。 */
 export function mockDriveFolders() {
   const folders = buildEvents(Date.now())
-    .filter((e) => e.status.code !== 'opened')
+    .filter((e) => e.id !== 'evt-wolf-sat')
     .map((e) => ({
       id: 'mockfolder-' + e.id,
       name: `${e.dailyDetails.startDate.slice(0, 10)} ${mockFolderLabel(e.name)}`,

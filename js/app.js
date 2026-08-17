@@ -902,13 +902,16 @@
     return m ? { date: m[1], time: m[2] } : { date: label || '', time: '' };
   }
 
-  var MONTH_MS = 30 * 24 * 3600 * 1000; // 「1ヶ月前」を30日で近似
-
-  /* 時刻ベースの3段階フェーズ(参照デザイン準拠)
-   *   開始1ヶ月前〜開始   : STARTS IN  <開始までのカウントダウン>
+  /* 時刻ベースの3段階フェーズ
+   *   開始前               : STARTS IN  <開始までのカウントダウン>
    *   開始〜レジクロ       : REG CLOSE IN <レジクロまでのカウントダウン>
    *   レジクロ後           : LIVE
-   * API が past を返したら最優先で CLOSED。target を持つ場合はカウントダウン表示。 */
+   * API が past を返したら最優先で CLOSED。target を持つ場合はカウントダウン表示。
+   *
+   * 参照デザインは「開始 1 ヶ月前から」だったが、日数の条件は外した(#46)。
+   * ウルフはシリーズごと 1〜2 ヶ月先にまとめて公開されるため、1 ヶ月で切ると
+   * 開催予定のカードが常に OPEN のままでカウントダウンが一度も出なかった
+   * (本番の開催予定 7 件がすべて 35〜40 日先で該当)。 */
   function liveLvSub(ev) { return ev.live ? 'Lv.' + ev.live.levelIndex : 'In progress'; }
 
   function futureOpenPhase(ev) {
@@ -926,11 +929,11 @@
     var regClose = ev.regCloseAt ? Date.parse(ev.regCloseAt) : NaN;
 
     if (isFinite(start)) {
-      if (now < start) {
-        // 開始前: 1ヶ月以内ならカウントダウン、それより先は通常の OPEN 表示
-        if (now >= start - MONTH_MS) return { cls: 's-startin', main: 'STARTS IN', sub: '', dot: true, target: start };
-        return futureOpenPhase(ev);
-      }
+      /* 開始前は日数にかかわらずカウントダウン。
+       * 受付が閉じている大会も同じで、CLOSED ではなくカウントダウンになる。
+       * 1 ヶ月以内の大会では従来からそうなっていたので、遠い大会をそれに揃えた形。
+       * 受付状況は Info タブで確認できる。 */
+      if (now < start) return { cls: 's-startin', main: 'STARTS IN', sub: '', dot: true, target: start };
       // 開始済み: レジクロ前ならカウントダウン、後(または不明)なら LIVE
       if (isFinite(regClose) && now < regClose) return { cls: 's-regclose', main: 'REG CLOSE IN', sub: '', dot: true, target: regClose };
       return { cls: 's-live', main: 'LIVE', sub: liveLvSub(ev), dot: true, target: null };
@@ -1268,12 +1271,16 @@
    * 一覧の先読み(prefetchVisibleDetails)には混ぜない。写真がある大会は
    * 運営が写真を上げたものだけで全体から見れば少数なので、表示中 12 件ぶんを
    * 先読みすると、ほとんどが「0 枚」という応答のための往復になってしまう。
-   * 開催予定の大会は写真がありえないため、そもそも問い合わせない。 */
+   *
+   * 大会の状態では絞らない。以前は「開催予定の大会は写真がありえない」として
+   * future を問い合わせ対象から外していたが、告知画像や会場写真を先に載せたいという
+   * 運用があり前提が誤りだった(#48)。実際に開催予定の大会のフォルダを作っても
+   * サーバー側は match=exact で写真を返しており、出ないのはここで弾いていたため。
+   * 取得はカードを開いたときだけなので、増える通信は開いた 1 件につき 1 回。 */
   function maybeLoadPhotos(id, onDone) {
     var ev = findEvent(id);
     var done = function () { if (onDone) onDone(); };
     if (window.__CARTA_DATA_SOURCE__ !== 'api' || !ev) { done(); return; }
-    if (ev.status === 'future') { ev._photos = 'loaded'; done(); return; }
     if (ev._photos === 'loaded') { done(); return; }
     if (ev._photos === 'loading' && ev._photosPromise) { ev._photosPromise.then(done); return; }
 
