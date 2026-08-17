@@ -41,7 +41,20 @@ export const config = {
   // wolf / utage の league 名部分一致マップ(それ以外は other)
   categoryWolf: csv(process.env.POKERLENS_CATEGORY_WOLF || 'wolf,ウルフ'),
   categoryUtage: csv(process.env.POKERLENS_CATEGORY_UTAGE || 'utage,宴'),
+
+  // --- 大会写真(Google Drive) ---
+  // PokerLens には大会に複数枚の写真を紐づける仕組みが無い(告知用の 1 枚だけ)ため、
+  // 写真は Drive の「リンクを知っている全員が閲覧可」な親フォルダから読む。
+  // 認証は API キーのみで、公開されたファイルしか読めない。
+  googleApiKey: process.env.GOOGLE_API_KEY || '',
+  // 親フォルダの ID(URL の /folders/ の後ろ)。直下に「YYYY-MM-DD 大会名」のフォルダが並ぶ。
+  photoFolderId: process.env.PHOTO_DRIVE_FOLDER_ID || '',
 };
+
+// 写真機能が使えるか。live では両方の環境変数が要る。
+// 未設定でもエラーにはせず「写真が 0 枚」として扱い、サイトの他の機能を巻き込まない
+// (写真は付加機能で、これが無くても大会情報は成立するため)。
+config.photosEnabled = config.isMock || !!(config.googleApiKey && config.photoFolderId);
 
 export function assertLiveCredentials() {
   if (config.isMock) return;

@@ -128,6 +128,14 @@
     tabs.push({ key: 'info', label: 'Info' });
     tabs.push({ key: 'prize', label: 'Prize' });
     tabs.push({ key: 'structure', label: 'Structure' });
+    /* 写真タブは Drive に写真があった大会にだけ出す。写真は運営が任意で上げるもので、
+     * 大半の大会には無いため、常設すると「開いても空」のタブばかりになる。
+     * ev.photos は /api/photos/:id を取得したあとに入る(取得前・0 枚なら出ない)。
+     *
+     * 並びは必ず一番右。出たり出なかったりするタブなので、途中に挟むと大会ごとに
+     * Info / Prize / Structure の位置がずれて押し間違えるため(運営の指定)。
+     * 遅れて出てくるタブでもあり、後ろに足すぶんには既存タブの位置が動かない。 */
+    if (ev.photos && ev.photos.length) tabs.push({ key: 'photos', label: 'Photos' });
     return tabs;
   }
 
@@ -710,6 +718,28 @@
     );
   }
 
+  /* 写真パネル。/api/photos/:id が返した一覧をサムネイルのグリッドで並べる。
+   * 画像は Google の CDN(lh3.googleusercontent.com)からブラウザが直接読むので、
+   * ここを通る通信は URL の一覧だけ。
+   * img に width/height を入れているのは、読み込み前から縦横比ぶんの場所を確保して
+   * 画面がガタつかないようにするため(縦横が混在するので比率は 1 枚ずつ違う)。 */
+  function photosPanel(ev) {
+    var photos = ev.photos || [];
+    if (!photos.length) return '<p class="reg-note">No photos for this tournament yet.</p>';
+
+    var items = photos.map(function (p, i) {
+      var size = p.w && p.h ? ' width="' + p.w + '" height="' + p.h + '"' : '';
+      return (
+        '<button class="photo-thumb" type="button" data-photo="' + i + '" aria-label="' + esc(p.name) + '">' +
+        '<img src="' + esc(p.thumb) + '" srcset="' + esc(p.thumb) + ' 1x, ' + esc(p.thumb2x) + ' 2x"' +
+        ' alt="' + esc(p.name) + '" loading="lazy" decoding="async"' + size + '>' +
+        '</button>'
+      );
+    }).join('');
+
+    return '<div class="photo-grid" data-photo-event="' + esc(ev.id) + '">' + items + '</div>';
+  }
+
   function panelHtml(ev, key) {
     switch (key) {
       case 'info': return infoPanel(ev);
@@ -717,6 +747,7 @@
       case 'results': return resultsPanel(ev);
       case 'live': return livePanel(ev);
       case 'prize': return prizePanel(ev);
+      case 'photos': return photosPanel(ev);
     }
     return '';
   }
@@ -1093,6 +1124,42 @@
     ev._detailPromise.then(done);
   }
 
+  /* 大会写真(/api/photos/:id)を取得して ev.photos に入れる。
+   * 詳細(/api/events/:id)とは別のエンドポイントなので取得も別建てにしてある。
+   *
+   * 一覧の先読み(prefetchVisibleDetails)には混ぜない。写真がある大会は
+   * 運営が写真を上げたものだけで全体から見れば少数なので、表示中 12 件ぶんを
+   * 先読みすると、ほとんどが「0 枚」という応答のための往復になってしまう。
+   * 開催予定の大会は写真がありえないため、そもそも問い合わせない。 */
+  function maybeLoadPhotos(id, onDone) {
+    var ev = findEvent(id);
+    var done = function () { if (onDone) onDone(); };
+    if (window.__CARTA_DATA_SOURCE__ !== 'api' || !ev) { done(); return; }
+    if (ev.status === 'future') { ev._photos = 'loaded'; done(); return; }
+    if (ev._photos === 'loaded') { done(); return; }
+    if (ev._photos === 'loading' && ev._photosPromise) { ev._photosPromise.then(done); return; }
+
+    ev._photos = 'loading';
+    ev._photosPromise = fetch('/api/photos/' + encodeURIComponent(id), { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        ev.photos = (d && !d.error && d.photos) || [];
+        ev._photos = 'loaded';
+      })
+      /* 失敗しても写真タブが出ないだけ。_photos を戻して次に開いたとき再試行させる */
+      .catch(function () { ev.photos = []; ev._photos = null; });
+    ev._photosPromise.then(done);
+  }
+
+  /* カードを開く前に必要なものを揃える。詳細と写真は別エンドポイントなので並行に取る
+   * (直列にすると開くまでの待ちがそのぶん延びる)。どちらが失敗しても展開はする。 */
+  function loadForOpen(id, onDone) {
+    var pending = 2;
+    var done = function () { if (--pending === 0) onDone(); };
+    maybeLoadDetail(id, done);
+    maybeLoadPhotos(id, done);
+  }
+
   /* 画面表示後、表示中カードの詳細をバックグラウンドで順番に先読みする。
    * 押下時に取得済みなら即時展開できる。フィルタ変更で自動的にやり直す(古い先読みは中断)。 */
   var prefetchRun = 0;
@@ -1267,11 +1334,13 @@
           stopLivePolling();
           return;
         }
-        // 開く: API 接続時は詳細取得の完了を待ってから展開する
+        // 開く: API 接続時は詳細と写真の取得完了を待ってから展開する
+        // (写真タブの有無はタブの並びを変えるので、取得前に開くとタブが後から増えてしまう)
         var ev = findEvent(id);
-        if (window.__CARTA_DATA_SOURCE__ === 'api' && ev && ev._detail !== 'loaded') {
+        var pending = ev && (ev._detail !== 'loaded' || ev._photos !== 'loaded');
+        if (window.__CARTA_DATA_SOURCE__ === 'api' && pending) {
           card.classList.add('is-loading');
-          maybeLoadDetail(id, function () {
+          loadForOpen(id, function () {
             card.classList.remove('is-loading');
             openCard(id);
           });
@@ -1397,6 +1466,74 @@
     e.preventDefault();
     hit.click();
   });
+
+  /* ---------- 写真の拡大表示 ----------
+   * サムネイルを押したら全画面のビューアで大きい画像(full)を出す。
+   * サムネイルは render() のたびに作り直されるので、個別に貼らず listEl に委譲する。 */
+
+  var viewerEl = document.getElementById('photoViewer');
+  var viewerImg = document.getElementById('photoImage');
+  var viewerCap = document.getElementById('photoCaption');
+  var viewer = { list: [], index: 0 };
+
+  function showViewerPhoto() {
+    var p = viewer.list[viewer.index];
+    if (!p) return;
+    viewerImg.src = p.full;
+    viewerImg.alt = p.name;
+    viewerCap.textContent = (viewer.index + 1) + ' / ' + viewer.list.length;
+    /* 1 枚しかない大会では前後ボタンを出さない(押しても何も起きないボタンを見せない) */
+    var multi = viewer.list.length > 1;
+    viewerEl.querySelectorAll('.photo-nav').forEach(function (b) { b.hidden = !multi; });
+  }
+
+  function openViewer(photos, index) {
+    if (!viewerEl || !photos || !photos.length) return;
+    viewer.list = photos;
+    viewer.index = index;
+    viewerEl.hidden = false;
+    document.body.style.overflow = 'hidden'; // 背後の一覧がスクロールしないように
+    showViewerPhoto();
+  }
+
+  function closeViewer() {
+    if (!viewerEl || viewerEl.hidden) return;
+    viewerEl.hidden = true;
+    viewerImg.removeAttribute('src'); // 閉じた時点で読み込みを止める(大きい画像なので)
+    document.body.style.overflow = '';
+  }
+
+  function stepViewer(delta) {
+    var n = viewer.list.length;
+    if (!n) return;
+    viewer.index = (viewer.index + delta + n) % n; // 端まで来たら反対側へ回る
+    showViewerPhoto();
+  }
+
+  listEl.addEventListener('click', function (e) {
+    var thumb = e.target.closest('.photo-thumb');
+    if (!thumb) return;
+    var grid = thumb.closest('.photo-grid');
+    var ev = grid && findEvent(grid.dataset.photoEvent);
+    if (ev) openViewer(ev.photos, Number(thumb.dataset.photo) || 0);
+  });
+
+  if (viewerEl) {
+    viewerEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-photo-action]');
+      var action = btn ? btn.dataset.photoAction : null;
+      if (action === 'prev') stepViewer(-1);
+      else if (action === 'next') stepViewer(1);
+      else if (action === 'close' || e.target === viewerEl) closeViewer(); // 余白を押しても閉じる
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (viewerEl.hidden) return;
+      if (e.key === 'Escape') closeViewer();
+      else if (e.key === 'ArrowLeft') stepViewer(-1);
+      else if (e.key === 'ArrowRight') stepViewer(1);
+    });
+  }
 
   /* ---------- 日付・月セレクター ---------- */
 
@@ -1954,9 +2091,9 @@
   render();
   ensureCountdownTicker();         // STARTS IN / REG CLOSE IN のカウントダウン開始
   if (state.openedId) {
-    // ?event=<id> で自動展開した場合も詳細(結果/ストラクチャー/ライブ)を読み込み、完了後に反映
+    // ?event=<id> で自動展開した場合も詳細(結果/ストラクチャー/ライブ)と写真を読み込み、完了後に反映
     var openId = state.openedId;
-    maybeLoadDetail(openId, function () { if (state.openedId === openId) render(); });
+    loadForOpen(openId, function () { if (state.openedId === openId) render(); });
     startLivePolling(openId);
     var initialCard = document.getElementById('event-' + openId);
     if (initialCard) scrollToOpenCard(initialCard);
