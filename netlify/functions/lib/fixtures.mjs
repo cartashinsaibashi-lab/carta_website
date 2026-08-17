@@ -640,9 +640,15 @@ function mockFolderLabel(name) {
   return name.replace(/—/g, '-').replace(/ /g, '　');
 }
 
+/* 親フォルダ直下のフォルダ一覧。
+ * **開催予定の大会にもフォルダを作る**。告知画像を先に載せる運用があるため、
+ * フロントは状態で絞らず写真を取りに行くようになった(#48)。以前は
+ * `status.code !== 'opened'` で除外していて、開催予定の経路をローカルで確認できなかった。
+ * ただし evt-wolf-sat だけは意図的にフォルダを作らない —「写真 0 枚 → Photos タブが
+ * 出ない」ケースの確認用に 1 件残しておく必要があるため。 */
 export function mockDriveFolders() {
   const folders = buildEvents(Date.now())
-    .filter((e) => e.status.code !== 'opened')
+    .filter((e) => e.id !== 'evt-wolf-sat')
     .map((e) => ({
       id: 'mockfolder-' + e.id,
       name: `${e.dailyDetails.startDate.slice(0, 10)} ${mockFolderLabel(e.name)}`,
