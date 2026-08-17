@@ -317,14 +317,22 @@
       ? '<br>Next break in <span class="live-break-countdown" data-break-timer data-ends-at="' +
         lv.breakAt + '">' + esc(fmtCountdown(lv.breakAt - Date.now())) + '</span>'
       : '';
+
+    /* 休憩中は見出しを BREAK にし、ブラインド行を出さない。
+     * 休憩行の sb/bb/ante は実データでも 0 なので、そのまま出すと「0 / 0 ante 0」という
+     * 意味のない表示になる(#38)。休憩明けのブラインドは NEXT 行に出るので情報は落ちない。 */
+    var headline = lv.isBreak ? 'BREAK' : 'LEVEL ' + lv.levelIndex;
+    var blindsHtml = lv.isBreak ? '' :
+      '<div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
+      '<span class="live-ante">ante ' + num(lv.ante) + '</span></div>';
+
     return (
       '<div class="live-board">' +
       '  <div class="live-clock">' +
-      '    <div class="live-level">LEVEL ' + lv.levelIndex + '</div>' +
+      '    <div class="live-level">' + headline + '</div>' +
       '    <div class="live-timer" data-timer data-remaining="' + lv.remainingSec + '"' +
       (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '') + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
-      '    <div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
-      '      <span class="live-ante">ante ' + num(lv.ante) + '</span></div>' +
+      blindsHtml +
       '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + breakHtml + '</div>' +
       '  </div>' +
       '  <div class="live-stats">' +

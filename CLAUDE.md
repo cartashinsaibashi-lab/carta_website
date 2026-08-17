@@ -144,6 +144,15 @@ Announcement タブの運用メモ(`Unlimited` / `Level 8 / 18:30` 等)なので
 **ストラクチャーの `type` は実データでは数値**(1=レベル, 2=休憩)。文字列 `'break'` と両対応にしてある。
 配列の並び順が進行順で、先頭(受付前)の休憩は表示しない。
 
+**現在位置は `status.level.id` で引く。`index` では引けない。** `EventLevel.index` は
+**レベル行だけの通し番号**で、**休憩行は 0** で返る。休憩中は `status.levelIndex` も
+`status.level.index` も 0 になるため、index で引くと「該当なし」になり、そこから導く値
+(ブラインド・次のレベル・次の休憩)が全部ずれる(#38 で実際に起きた)。
+`id` は休憩も含めた全行の通し番号で休憩行にも一意に振られており、行を指せる唯一のキー。
+`buildLive()` は id で引き、id を返さない応答向けに index 引きのフォールバックを残してある。
+**mock の `makeLevels()` もこの形(先頭に受付前休憩 / 休憩は `index: 0` / `type` は数値)に
+揃えてある。崩すと mock で通っても live で壊れる。**
+
 **ランキングポイントは逆引きできない**。`/v1/ranking/{id}/points` のレコードが持つ
 `reference.id` は **VenueEvent の id ではない**(`/v1/event/{reference.id}` は 404)。実イベントへの変換は
 `GET /v1/ranking/{id}/event-by-reference/{reference.id}` だけで、**逆向き(イベント → 参照)は 404**。

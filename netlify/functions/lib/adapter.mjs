@@ -150,10 +150,23 @@ function buildLive(ev, levels) {
   const arr = Array.isArray(levels) ? levels : [];
   const isBreak = (l) => l.type === 'break' || l.type === 2 || l.type === '2';
 
-  // 現在レベルの位置(type=1 かつ index===idx)。無ければ index<=idx の最後のレベル位置。
-  let pos = arr.findIndex((l) => !isBreak(l) && num(l.index) === idx);
-  if (pos < 0) for (let i = 0; i < arr.length; i++) if (!isBreak(arr[i]) && num(arr[i].index) <= idx) pos = i;
+  /* 現在位置は **status.level.id** で引く。
+   * 実データの癖: 休憩行の index は 0 で返り(レベルは 1,2,3...)、休憩中は
+   * status.levelIndex / status.level.index も 0 になる。index で引くと休憩中は
+   * 「該当なし」になり、そこから導く値が全部おかしくなっていた(#38)——
+   * ブラインドが 0/0、次のレベルが Lv.1、次の休憩が今の休憩、という状態。
+   * id は休憩行にも一意に振られているので、行を指せる唯一のキーが id になる。 */
+  const curId = num(st.level && st.level.id);
+  let pos = curId > 0 ? arr.findIndex((l) => num(l.id) === curId) : -1;
+
+  /* id を返さない応答向けのフォールバック(従来の index 引き)。
+   * 休憩は id が無いと特定できないので、レベル行だけを対象にする。 */
+  if (pos < 0) {
+    pos = arr.findIndex((l) => !isBreak(l) && num(l.index) === idx);
+    if (pos < 0) for (let i = 0; i < arr.length; i++) if (!isBreak(arr[i]) && num(arr[i].index) <= idx) pos = i;
+  }
   const cur = pos >= 0 ? arr[pos] : null;
+  const onBreak = !!cur && isBreak(cur);
 
   const elapsed = num(st.level && st.level.elapsedSeconds);
   const levelMinutes = num(cur ? cur.minutes : ev.dailyDetails && ev.dailyDetails.levelMinutes) || num(st.levelMinutes);
@@ -188,6 +201,10 @@ function buildLive(ev, levels) {
 
   return {
     levelIndex: idx,
+    /* 休憩中であることをフロントに伝える。休憩行の smallBlind/bigBlind/ante は
+     * 実データでも 0 なので、そのまま出すと「0 / 0 ante 0」になる。
+     * フロントは isBreak のときブラインド行を出さず、見出しを BREAK にする。 */
+    isBreak: onBreak,
     sb: cur ? num(cur.smallBlind) : 0,
     bb: cur ? num(cur.bigBlind) : 0,
     ante: cur ? num(cur.ante) : 0,
