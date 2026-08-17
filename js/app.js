@@ -312,8 +312,10 @@
     var seatsHtml = seatingHtml(ev);
     /* 次の休憩は「あと何分か」が知りたい情報なので、休憩の長さではなく
      * 休憩開始までのカウントダウンを出す。breakAt(絶対時刻)を持たない場合
-     * (ストラクチャーに休憩が無い等)は行ごと省く。 */
-    var breakHtml = lv.breakAt
+     * (ストラクチャーに休憩が無い等)は行ごと省く。
+     * 休憩中も出さない — 今まさに休憩なのに「次の休憩まで 2:10:34」と出しても
+     * 読み手の役に立たず、今の休憩の残り時間(上の大きなタイマー)と紛らわしいため。 */
+    var breakHtml = lv.breakAt && !lv.isBreak
       ? '<br>Next break in <span class="live-break-countdown" data-break-timer data-ends-at="' +
         lv.breakAt + '">' + esc(fmtCountdown(lv.breakAt - Date.now())) + '</span>'
       : '';
