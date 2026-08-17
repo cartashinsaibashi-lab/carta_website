@@ -81,7 +81,13 @@
 現在ブラインドの計算に使う項目:
 
 - `status.code`: `opened | running | closed`
-- `status.levelIndex` + `status.level.elapsedSeconds` → 現在レベルと経過時間(残り時間 = `EventLevel.minutes × 60 − elapsedSeconds`)
+- `status.level.id` + `status.level.elapsedSeconds` → **現在位置**と経過時間(残り時間 = `EventLevel.minutes × 60 − elapsedSeconds`)
+  - **`levelIndex` / `level.index` では現在位置を引けない。** `EventLevel.index` はレベル行だけの
+    通し番号で、**休憩行は 0**。休憩中は `status.levelIndex` も `status.level.index` も 0 になる。
+    `EventLevel.id` は休憩も含めた全行の通し番号で、行を一意に指せるのはこれだけ
+  - 実例(2026-08-17 の `#1 FREE ROLL`。22 行中 break は 2 行): `id=1(index=0, 30分, 受付前)`
+    / `id=2..7(index=1..6, レベル)` / `id=8(index=0, 10分の休憩)` / `id=9(index=7, レベル)`
+  - `status.level` と別に `status.levelProjection`(同じ形)も返るが、用途は未確認
 - `stats`: `totalEntries` / `totalPlayers`(残り人数)/ `averageChipsCount` / `totalChipsCount` / `totalTables` / `totalPayoutAmount`(プライズプール)/ `guaranteedAmount`
 
 WebSocket 等のプッシュ配信は standard 仕様には見当たらないため、**ポーリング(例: 15〜30 秒間隔)想定**。

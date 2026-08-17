@@ -112,10 +112,15 @@
   }
 
   /* ライブのレベル残り秒。endsAt(絶対時刻)があれば現在時刻から算出して
-     取得ラグ/キャッシュ古さを自己補正、無ければスナップショット値を使う。 */
+     取得ラグ/キャッシュ古さを自己補正、無ければスナップショット値を使う。
+
+     切り上げ(ceil)なのは、00:00 を「本当に終わった瞬間」だけに限るため。四捨五入だと
+     終了の最大 0.5 秒前に 00:00 と表示されるが、その時点では繰り上げ判定(projectedStep)は
+     まだ「終わっていない」と返すので、繰り上げが 1 秒遅れて 00:00 が見えてしまう。
+     切り上げなら「表示が 0 になる」と「繰り上げできる」が同じ瞬間に揃う。 */
   function remainSec(endsAt, fallback) {
     return endsAt != null && isFinite(endsAt)
-      ? Math.max(0, Math.round((endsAt - Date.now()) / 1000))
+      ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       : (fallback || 0);
   }
 
@@ -346,24 +351,115 @@
     );
   }
 
-  function livePanel(ev) {
+  /* ---------- レベル終了後のローカル繰り上げ ----------
+   * タイマーが 00:00 になっても、サーバーが次のレベルを返すまで表示が止まって見える。
+   * 実測(2026-08-17 の本番、3 秒間隔): レベル間で 9 秒 / 休憩に入るときで 22 秒。
+   * 内訳は /api/events/:id の CDN キャッシュ(最大 10 秒)と PokerLens 側の反映待ちで、
+   * どちらも取得側の工夫では縮められない(no-store はブラウザキャッシュしか迂回しない。
+   * キャッシュ避けクエリを付けない判断は意図的 — pollLiveOnce() のコメント参照)。
+   *
+   * そこで手元の ev.structure(進行順のレベル・休憩と各長さ)で先に進めておき、
+   * 実データが届いたら上書きする。会場が時計を手動で止めたときはその間だけ先行するが、
+   * 次の取得(最長 25 秒)で戻る。 */
+
+  /* 現在の項目が終わっているとき、structure 上で「今どこにいるはずか」を返す。
+   * まだ終わっていない / 繰り上げられない(stepIndex が無い・末尾に到達・長さ不明)なら null。 */
+  function projectedStep(ev) {
     var lv = ev.live;
+    var steps = ev.structure || [];
+    if (!lv || lv.endsAt == null || lv.stepIndex == null) return null;
+    var now = Date.now();
+    if (lv.endsAt > now) { ev._rollover = null; return null; }
+
+    /* 繰り上げの基準。一度繰り上げたらその予定を使い回す。
+     * サーバーがまだ前の項目を返している間、endsAt は取得のたびに「今」へずれていく
+     * (残りが 0 のとき endsAt = status.date = 応答時刻になるため)。毎回サーバー値から
+     * 計算し直すと、繰り上げ後のカウントダウンが追い取得のたびに数秒巻き戻って見える。
+     * サーバーが実際に次の項目へ進めば stepIndex が変わるので、そこで基準を取り直す。 */
+    var pin = ev._rollover;
+    var i = pin && pin.fromStep === lv.stepIndex ? pin.index : lv.stepIndex;
+    var end = pin && pin.fromStep === lv.stepIndex ? pin.endsAt : lv.endsAt;
+
+    /* タブを長く離れていた等で複数の項目をまたいで遅れていることがあるので、
+     * 現在時刻を追い越すまで進める。長さ 0 の項目は進めないので打ち切る(無限ループ防止)。 */
+    while (end <= now) {
+      i += 1;
+      if (i >= steps.length) { ev._rollover = null; return null; }
+      var mins = steps[i].minutes || 0;
+      if (mins <= 0) { ev._rollover = null; return null; }
+      end += mins * 60000;
+    }
+    ev._rollover = { fromStep: lv.stepIndex, index: i, endsAt: end };
+    return { index: i, step: steps[i], endsAt: end };
+  }
+
+  /* 表示に使うライブ状態。基本はサーバーの値をそのまま返し、繰り上げが要るときだけ
+   * 差し替えた複製を返す(ev.live 自体は書き換えない — 次の取得結果と比較するため)。
+   * nextLevel / breakAt の作り方は adapter.mjs の buildLive() に合わせてある。 */
+  function liveView(ev) {
+    var p = projectedStep(ev);
+    if (!p) return ev.live;
+
+    var steps = ev.structure;
+    var s = p.step;
+    var isBreak = s.type === 'break';
+    var k;
+
+    var nextLevel = '';
+    for (k = p.index + 1; k < steps.length; k++) {
+      if (steps[k].type !== 'break') { nextLevel = 'SB ' + steps[k].sb + ' / BB ' + steps[k].bb; break; }
+    }
+
+    var breakAt = null, nextBreak = '', ms = p.endsAt;
+    for (k = p.index + 1; k < steps.length; k++) {
+      if (steps[k].type === 'break') { breakAt = ms; nextBreak = steps[k].minutes + ' min break'; break; }
+      ms += (steps[k].minutes || 0) * 60000;
+    }
+
+    return {
+      levelIndex: isBreak ? 0 : s.level,
+      stepIndex: p.index,
+      isBreak: isBreak,
+      sb: isBreak ? 0 : s.sb,
+      bb: isBreak ? 0 : s.bb,
+      ante: isBreak ? 0 : s.ante,
+      remainingSec: Math.max(0, Math.round((p.endsAt - Date.now()) / 1000)),
+      endsAt: p.endsAt,
+      nextLevel: nextLevel,
+      nextBreak: nextBreak,
+      breakAt: breakAt,
+      tables: ev.live.tables
+    };
+  }
+
+  function livePanel(ev) {
+    var lv = liveView(ev);
     var seatsHtml = seatingHtml(ev);
     /* 次の休憩は「あと何分か」が知りたい情報なので、休憩の長さではなく
      * 休憩開始までのカウントダウンを出す。breakAt(絶対時刻)を持たない場合
-     * (ストラクチャーに休憩が無い等)は行ごと省く。 */
-    var breakHtml = lv.breakAt
+     * (ストラクチャーに休憩が無い等)は行ごと省く。
+     * 休憩中も出さない — 今まさに休憩なのに「次の休憩まで 2:10:34」と出しても
+     * 読み手の役に立たず、今の休憩の残り時間(上の大きなタイマー)と紛らわしいため。 */
+    var breakHtml = lv.breakAt && !lv.isBreak
       ? '<br>Next break in <span class="live-break-countdown" data-break-timer data-ends-at="' +
         lv.breakAt + '">' + esc(fmtCountdown(lv.breakAt - Date.now())) + '</span>'
       : '';
+
+    /* 休憩中は見出しを BREAK にし、ブラインド行を出さない。
+     * 休憩行の sb/bb/ante は実データでも 0 なので、そのまま出すと「0 / 0 ante 0」という
+     * 意味のない表示になる(#38)。休憩明けのブラインドは NEXT 行に出るので情報は落ちない。 */
+    var headline = lv.isBreak ? 'BREAK' : 'LEVEL ' + lv.levelIndex;
+    var blindsHtml = lv.isBreak ? '' :
+      '<div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
+      '<span class="live-ante">ante ' + num(lv.ante) + '</span></div>';
+
     return (
       '<div class="live-board">' +
       '  <div class="live-clock">' +
-      '    <div class="live-level">LEVEL ' + lv.levelIndex + '</div>' +
+      '    <div class="live-level">' + headline + '</div>' +
       '    <div class="live-timer" data-timer data-remaining="' + lv.remainingSec + '"' +
       (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '') + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
-      '    <div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
-      '      <span class="live-ante">ante ' + num(lv.ante) + '</span></div>' +
+      blindsHtml +
       '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + breakHtml + '</div>' +
       '  </div>' +
       '  <div class="live-stats">' +
@@ -1929,16 +2025,32 @@
         remaining = endsAt != null ? remainSec(endsAt, fallback) : (remaining > 0 ? remaining - 1 : 0);
         el.textContent = fmtSec(remaining);
         if (remaining === 0) {
-          clearInterval(t);
+          /* 進行中カードを開いていないときは、従来どおりここで止める。 */
+          if (!(livePollId && state.openedId === livePollId && !document.hidden)) {
+            clearInterval(t);
+            return;
+          }
+
           /* レベル終了 → 通常ポーリング(25秒)を待たずに取り直して次レベルへ。
            * 同じレベルで既に追い取得中なら何もしない(下の再描画で毎秒走るのを防ぐ)。 */
-          if (livePollId && state.openedId === livePollId && !document.hidden) {
-            var cur = findEvent(livePollId);
-            var idx = cur && cur.live ? cur.live.levelIndex : -1;
-            if (levelEndPendingFor !== idx) {
-              levelEndPendingFor = idx;
-              refetchAfterLevelEnd(livePollId, idx, 1);
-            }
+          var cur = findEvent(livePollId);
+          var idx = cur && cur.live ? cur.live.levelIndex : -1;
+          if (levelEndPendingFor !== idx) {
+            levelEndPendingFor = idx;
+            refetchAfterLevelEnd(livePollId, idx, 1);
+          }
+
+          /* 実データが届くまでの間、手元のストラクチャーで次の項目へ繰り上げて描き直す。
+           * これをしないと取得が返るまで 00:00 のまま止まって見える(実測 9〜22 秒)。
+           *
+           * **タイマーは繰り上げられたときだけ止める。** remainSec() は四捨五入なので、
+           * 実際の終了より最大 0.5 秒早くここへ来ることがあり、その時点では
+           * projectedStep() がまだ「終わっていない」と判断して null を返す。そこで
+           * 止めてしまうと 00:00 のまま残るため、止めずに次の秒で繰り上げ直す。
+           * 最終レベルに達した場合は繰り上げ先が無いので 00:00 を出し続ける(意図どおり)。 */
+          if (cur && projectedStep(cur)) {
+            clearInterval(t);
+            updateLivePanel(livePollId);
           }
         }
       }, 1000);

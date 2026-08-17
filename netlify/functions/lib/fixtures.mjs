@@ -70,27 +70,86 @@ const VENUE = {
 
 const NLH = { id: 'gt-nlh', name: "No Limit Hold'em", limit: 'none', category: 'texasHoldem' };
 
-// EventLevel[] を生成(index, sb/bb/ante, minutes)
+/* EventLevel[] を生成する。**実データの形に厳密に合わせてある**。
+ * ここを崩すと mock で通っても live で壊れる。実際、以前は休憩行にも通し番号の index を
+ * 振っていたため、「休憩行の index は 0」という実データの癖を mock で再現できず、
+ * 休憩中に表示が全部ずれるバグ(#38)を取り逃がしていた。
+ *
+ * 実データの形(2026-08-17 に live の進行中大会で確認):
+ *   id    … 休憩も含めた全行の通し番号(1 始まり)。**行を一意に指せる唯一のキー**
+ *   index … レベル行だけの通し番号(1 始まり)。**休憩行は 0** で返る
+ *   type  … 1=レベル / 2=休憩(文字列ではなく数値)
+ *   先頭に「受付前の休憩」が入る(buildStructure が表示から落とす)
+ */
 function makeLevels(blinds, minutes, breakEvery, breakMinutes) {
   const rows = [];
-  let idx = 0;
+  let id = 0;
+  let levelIndex = 0;
+  const push = (row) => rows.push(Object.assign({ id: (id += 1) }, row));
+  const breakRow = (m) => ({ index: 0, type: 2, smallBlind: 0, bigBlind: 0, ante: 0, minutes: m });
+
+  push(breakRow(30)); // 受付前の休憩。実データには必ず入っている
   blinds.forEach((b, i) => {
-    rows.push({
-      id: idx,
-      index: idx,
-      type: 'level',
-      smallBlind: b[0],
-      bigBlind: b[1],
-      ante: b[2],
-      minutes,
-    });
-    idx += 1;
-    if ((i + 1) % breakEvery === 0 && i !== blinds.length - 1) {
-      rows.push({ id: idx, index: idx, type: 'break', minutes: breakMinutes });
-      idx += 1;
-    }
+    levelIndex += 1;
+    push({ index: levelIndex, type: 1, smallBlind: b[0], bigBlind: b[1], ante: b[2], minutes });
+    if ((i + 1) % breakEvery === 0 && i !== blinds.length - 1) push(breakRow(breakMinutes));
   });
   return rows;
+}
+
+/* ---------- 繰り上げ動作を目で見るための mock 専用の大会 ----------
+ * レベルが終わってからサーバーが追いつくまでの「遅れ」を再現する。実データでは
+ * レベル間で 9 秒 / 休憩に入るときで 22 秒(2026-08-17 の本番で実測)。その間クライアントは
+ * 手元のストラクチャーで繰り上げて表示する(app.js の projectedStep())。
+ * 実際の 15〜40 分レベルを待たずに確認できるよう、**15 秒**ごとに項目が切り替わり、
+ * 切り替わってから **10 秒**は前の項目を残り 0 秒で返し続ける大会を用意した。
+ *
+ * minutes が 0.25(= 15 秒)なのでストラクチャータブには 0.25 min と出るが、
+ * mock 専用の確認用データなので割り切っている。 */
+const DEMO_STEP_SEC = 15;   // 1 項目の長さ
+const DEMO_LAG_SEC = 10;    // 0 になってからサーバーが次を返すまでの遅れ
+
+const DEMO_LEVELS = (function () {
+  const rows = [];
+  let id = 0;
+  let levelIndex = 0;
+  const mins = DEMO_STEP_SEC / 60;
+  const push = (r) => rows.push(Object.assign({ id: (id += 1) }, r));
+  const breakRow = () => ({ index: 0, type: 2, smallBlind: 0, bigBlind: 0, ante: 0, minutes: mins });
+
+  push(breakRow()); // 受付前の休憩(実データに合わせる。buildStructure が落とす)
+  /* レベルを 16 個並べて 4 つごとに休憩を挟む(= 19 項目 / 一巡 約 4 分 45 秒)。
+   * 一巡して Lv.1 に戻る瞬間だけは、繰り上げ先が無くなるので 00:00 が数秒残る
+   * (最終レベルに達したときの正規のフォールバック)。ここを踏みにくくするために
+   * 一巡を長めに取ってある。 */
+  const blinds = [
+    [100, 200, 200], [200, 400, 400], [300, 600, 600], [500, 1000, 1000],
+    [800, 1600, 1600], [1000, 2000, 2000], [1500, 3000, 3000], [2000, 4000, 4000],
+    [3000, 6000, 6000], [4000, 8000, 8000], [5000, 10000, 10000], [8000, 16000, 16000],
+    [10000, 20000, 20000], [15000, 30000, 30000], [20000, 40000, 40000], [30000, 60000, 60000],
+  ];
+  blinds.forEach((b, i) => {
+    levelIndex += 1;
+    push({ index: levelIndex, type: 1, smallBlind: b[0], bigBlind: b[1], ante: b[2], minutes: mins });
+    if ((i + 1) % 4 === 0 && i !== blinds.length - 1) push(breakRow());
+  });
+  return rows;
+})();
+
+/* 「今どの項目にいるべきか」を時刻から決める。切り替わってから DEMO_LAG_SEC 秒のあいだは
+ * **前の項目を残り 0 秒で返す** — ここがクライアントの繰り上げが働く区間。
+ * 一巡したら Lv.1 に戻るので、何度でも観察できる。 */
+function demoStatus(now) {
+  const cyc = DEMO_LEVELS.slice(1); // 受付前の休憩を除いた進行順
+  const period = cyc.length * DEMO_STEP_SEC;
+  const t = Math.floor(now / 1000) % period;
+  let i = Math.floor(t / DEMO_STEP_SEC);
+  let elapsed = t % DEMO_STEP_SEC;
+  if (elapsed < DEMO_LAG_SEC) {
+    i = (i - 1 + cyc.length) % cyc.length;
+    elapsed = DEMO_STEP_SEC; // 残り 0 秒のまま据え置く
+  }
+  return { levelId: cyc[i].id, levelIndex: cyc[i].index, elapsedSeconds: elapsed };
 }
 
 const BLINDS_STANDARD = [
@@ -255,7 +314,13 @@ function venueEvent(over) {
     status: {
       code: over.statusCode, // 'opened' | 'running' | 'closed'
       levelIndex: over.levelIndex || 0,
-      level: { index: over.levelIndex || 0, elapsedSeconds: over.elapsedSeconds || 0 },
+      /* level.id は levels[] の行 id。休憩中は levelIndex も level.index も 0 になるため、
+       * 現在位置を一意に指せるのは id だけ(adapter の buildLive() が id で引く)。 */
+      level: {
+        id: over.levelId || 0,
+        index: over.levelIndex || 0,
+        elapsedSeconds: over.elapsedSeconds || 0,
+      },
       levelMinutes: over.levelMinutes || 30,
       // status.date は「この status を取得した時刻」のスナップショット。
       // adapter の buildLive() が endsAt(= date + レベル残り時間)の基準にするので、
@@ -292,6 +357,7 @@ function buildEvents(now) {
   const LIVE_LEVEL_MINUTES = 40;
   const liveStart = lastOccurrenceAt(now, 11);
   const liveElapsed = Math.floor((now - liveStart) / 1000) % (LIVE_LEVEL_MINUTES * 60);
+  const demo = demoStatus(now); // 繰り上げ確認用(15 秒ごとに切り替わり、10 秒遅れて追いつく)
 
   return [
   venueEvent({
@@ -308,6 +374,8 @@ function buildEvents(now) {
     flight: 'Day 1A',
     levelMinutes: LIVE_LEVEL_MINUTES,
     levelIndex: 8,
+    // levels[] の行 id。Lv.8 は先頭の受付前休憩と Lv.4 のあとの休憩を挟んで 10 行目
+    levelId: 10,
     elapsedSeconds: liveElapsed,
     lateRegLevel: 9,
     guarantee: 10000000,
@@ -320,6 +388,54 @@ function buildEvents(now) {
       totalEntries: 212, totalPlayers: 138, averageChipsCount: 46080,
       totalChipsCount: 6360000, totalPayoutAmount: 6360000, totalPayouts: 27,
       totalTables: 18, guaranteedAmount: 10000000,
+    },
+  }),
+  /* 繰り上げ確認用(mock 専用)。15 秒ごとに項目が切り替わり、切り替わってから 10 秒は
+   * サーバーが前の項目を返し続ける。その 10 秒のあいだ、タイマーが 00:00 で止まらずに
+   * 次のレベル / 休憩へ繰り上がることを目で確認できる。詳細は demoStatus() のコメント。 */
+  venueEvent({
+    id: 'evt-demo-rollover',
+    name: 'Rollover Demo (mock only)',
+    league: LEAGUE_OTHER,
+    statusCode: 'running',
+    startDate: jstWallClock(liveStart),
+    statusDate: jstInstant(now),
+    levelMinutes: DEMO_STEP_SEC / 60,
+    levelIndex: demo.levelIndex,
+    levelId: demo.levelId,
+    elapsedSeconds: demo.elapsedSeconds,
+    lateRegLevel: 4,
+    guarantee: 0,
+    description: '繰り上げ動作の確認用。15 秒ごとにレベルが切り替わります。',
+    buyin: buyin(5000, 500, 20000, 'Demo'),
+    stats: {
+      totalEntries: 24, totalPlayers: 12, averageChipsCount: 40000,
+      totalChipsCount: 480000, totalPayoutAmount: 0, totalPayouts: 3, totalTables: 2,
+    },
+  }),
+  /* 休憩中の大会。実データでは休憩に入ると status.levelIndex も status.level.index も 0 に
+   * なり、現在位置を指せるのは status.level.id だけになる(#38)。この状態を mock でも
+   * 再現しておかないと、休憩中の表示崩れをローカルで検知できない。
+   * levelId 11 は LEVELS_STANDARD の Lv.8 と Lv.9 の間の休憩(15 分)。 */
+  venueEvent({
+    id: 'evt-utage-break',
+    name: 'Utage Night Series — Day 1',
+    league: LEAGUE_UTAGE,
+    statusCode: 'running',
+    startDate: jstWallClock(liveStart),
+    statusDate: jstInstant(now),
+    levelMinutes: 15,
+    levelIndex: 0,
+    levelId: 11,
+    elapsedSeconds: 240, // 15 分休憩の 4 分経過 → 残り 11 分
+    lateRegLevel: 9,
+    guarantee: 3000000,
+    description: '休憩明けは Lv.9 から再開します。',
+    buyin: buyin(20000, 2000, 30000, 'Standard'),
+    stats: {
+      totalEntries: 96, totalPlayers: 41, averageChipsCount: 70000,
+      totalChipsCount: 2870000, totalPayoutAmount: 3000000, totalPayouts: 12,
+      totalTables: 5, guaranteedAmount: 3000000,
     },
   }),
   venueEvent({
@@ -408,6 +524,8 @@ const LEVELS_BY_ID = {
     ],
     40, 4, 15
   ),
+  'evt-demo-rollover': DEMO_LEVELS,
+  'evt-utage-break': LEVELS_STANDARD,
   'evt-wolf-day1a': LEVELS_STANDARD,
   'evt-utage-deep': LEVELS_STANDARD,
   'evt-wolf-sat': LEVELS_TURBO,
@@ -417,6 +535,7 @@ const LEVELS_BY_ID = {
 const PLAYERS_BY_ID = {
   'evt-weekly-bounty': makePlayers(10),
   'evt-wolf-main': makeSeatedPlayers(138, 9),   // 進行中: 9 max × 16 卓ぶんの着席者
+  'evt-utage-break': makeSeatedPlayers(41, 9),  // 休憩中: 5 卓ぶんの着席者
   'evt-wolf-day1a': makeCarryOverPlayers(66, 12), // 通過日: 66 エントリー中 12 名が翌日へ
 };
 
