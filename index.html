@@ -24,17 +24,19 @@
     <div class="gate-inner">
       <p class="gate-brand">CARTA POKER SERIES</p>
       <p class="gate-lead">Select a series</p>
-      <!-- ロゴのみを横 3 つ並べる。名前は出さないので、読み上げ用に aria-label を付ける。
-           宴は暗い画面用の白ロゴ(assets/logo.png)を使う。 -->
+      <!-- 選択肢を縦に 3 つ積む。画像に名前が入っているので文字は出さず、読み上げ用に aria-label を付ける。
+           ここだけ assets/1_*.jpg(1200x357 の横長バナー)を使う。ヘッダーのタブや
+           選択後に中央へ出るロゴは従来どおり正方形のロゴ画像で、用途が違うため別ファイル。
+           並び順は歌留多 → ウルフ → 宴(運営の指定)。data-category は内部の識別子なので変えない。 -->
       <div class="gate-list">
+        <button class="gate-item" type="button" data-category="other" aria-label="歌留多">
+          <img class="gate-icon" src="assets/1_carta.jpg" alt="">
+        </button>
         <button class="gate-item" type="button" data-category="wolf" aria-label="Wolf">
-          <img class="gate-icon" src="assets/logo-wolf.png" alt="">
+          <img class="gate-icon" src="assets/1_wolf.jpg" alt="">
         </button>
         <button class="gate-item" type="button" data-category="utage" aria-label="宴 Utage">
-          <img class="gate-icon" src="assets/logo.png" alt="">
-        </button>
-        <button class="gate-item" type="button" data-category="other" aria-label="その他・コラボイベント等">
-          <img class="gate-icon" src="assets/logo-other.png" alt="">
+          <img class="gate-icon" src="assets/1_utage.jpg" alt="">
         </button>
       </div>
     </div>
