@@ -112,10 +112,15 @@
   }
 
   /* ライブのレベル残り秒。endsAt(絶対時刻)があれば現在時刻から算出して
-     取得ラグ/キャッシュ古さを自己補正、無ければスナップショット値を使う。 */
+     取得ラグ/キャッシュ古さを自己補正、無ければスナップショット値を使う。
+
+     切り上げ(ceil)なのは、00:00 を「本当に終わった瞬間」だけに限るため。四捨五入だと
+     終了の最大 0.5 秒前に 00:00 と表示されるが、その時点では繰り上げ判定(projectedStep)は
+     まだ「終わっていない」と返すので、繰り上げが 1 秒遅れて 00:00 が見えてしまう。
+     切り上げなら「表示が 0 になる」と「繰り上げできる」が同じ瞬間に揃う。 */
   function remainSec(endsAt, fallback) {
     return endsAt != null && isFinite(endsAt)
-      ? Math.max(0, Math.round((endsAt - Date.now()) / 1000))
+      ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       : (fallback || 0);
   }
 
@@ -1973,21 +1978,32 @@
         remaining = endsAt != null ? remainSec(endsAt, fallback) : (remaining > 0 ? remaining - 1 : 0);
         el.textContent = fmtSec(remaining);
         if (remaining === 0) {
-          clearInterval(t);
+          /* 進行中カードを開いていないときは、従来どおりここで止める。 */
+          if (!(livePollId && state.openedId === livePollId && !document.hidden)) {
+            clearInterval(t);
+            return;
+          }
+
           /* レベル終了 → 通常ポーリング(25秒)を待たずに取り直して次レベルへ。
            * 同じレベルで既に追い取得中なら何もしない(下の再描画で毎秒走るのを防ぐ)。 */
-          if (livePollId && state.openedId === livePollId && !document.hidden) {
-            var cur = findEvent(livePollId);
-            var idx = cur && cur.live ? cur.live.levelIndex : -1;
-            if (levelEndPendingFor !== idx) {
-              levelEndPendingFor = idx;
-              /* 実データが届くまでの間、手元のストラクチャーで次の項目へ繰り上げて描き直す。
-               * これをしないと取得が返るまで 00:00 のまま止まって見える(実測 9〜22 秒)。
-               * 繰り上げられないとき(最終レベル等)は描き直さない — endsAt が過去のままの
-               * パネルを作り直すと、1 秒後にまたここへ来て毎秒描き直すことになるため。 */
-              if (cur && projectedStep(cur)) updateLivePanel(livePollId);
-              refetchAfterLevelEnd(livePollId, idx, 1);
-            }
+          var cur = findEvent(livePollId);
+          var idx = cur && cur.live ? cur.live.levelIndex : -1;
+          if (levelEndPendingFor !== idx) {
+            levelEndPendingFor = idx;
+            refetchAfterLevelEnd(livePollId, idx, 1);
+          }
+
+          /* 実データが届くまでの間、手元のストラクチャーで次の項目へ繰り上げて描き直す。
+           * これをしないと取得が返るまで 00:00 のまま止まって見える(実測 9〜22 秒)。
+           *
+           * **タイマーは繰り上げられたときだけ止める。** remainSec() は四捨五入なので、
+           * 実際の終了より最大 0.5 秒早くここへ来ることがあり、その時点では
+           * projectedStep() がまだ「終わっていない」と判断して null を返す。そこで
+           * 止めてしまうと 00:00 のまま残るため、止めずに次の秒で繰り上げ直す。
+           * 最終レベルに達した場合は繰り上げ先が無いので 00:00 を出し続ける(意図どおり)。 */
+          if (cur && projectedStep(cur)) {
+            clearInterval(t);
+            updateLivePanel(livePollId);
           }
         }
       }, 1000);
