@@ -843,7 +843,10 @@ body[data-theme="wolf"] .status-pill.is-active {
 /* 選択中は背後をスクロールさせない */
 body.gate-open { overflow: hidden; }
 
-.gate-inner { width: 100%; max-width: 460px; }
+/* 縦積みのバナー 3 枚 + 見出しが 1 画面に収まる幅。
+   520px だとバナー 1 枚が約 153px 高になり、3 枚 + 余白で 540px ほど。
+   横 3 列だった頃の 460px より広げたのは、バナー内のロゴと文字を読める大きさにするため。 */
+.gate-inner { width: 100%; max-width: 520px; }
 
 .gate-brand {
   font-family: var(--font-display);
@@ -861,35 +864,49 @@ body.gate-open { overflow: hidden; }
   color: var(--text-dim);
 }
 
-/* ロゴのみを横 3 つ。均等幅で並べる */
+/* 選択肢は縦に 3 つ積む。バナーが 3.39:1 と横長で、横 3 列にすると 1 枚あたり 140px ほどに
+   なり、画像に入っている「SERIES of POKER」や写真の細部が潰れて読めなくなるため。 */
 .gate-list {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
+/* バナーを枠いっぱいに敷く。
+   画像(assets/1_*.jpg)は 1200x357 の JPEG で、**外周 1〜2px の白フチと角丸
+   (半径およそ 34px = 幅の 2.8%)が焼き込まれている**。透過を持てない形式なので、
+   そのまま濃い背景に置くと白い縁と白い角が浮いて見える。そこで
+     ・枠を overflow:hidden にして画像をわずかに拡大し、白フチを枠の外へ押し出す
+     ・角丸は焼き込みより気持ち大きい割合で切り抜き、白い角ごと落とす
+   という二段で消している。角丸を px ではなく % にしているのは、画面幅で表示サイズが
+   変わっても焼き込みの角丸を必ず覆うようにするため(px 固定だと広い画面で白が出る)。
+   4% / 13.5% は縦横比 3.39:1 のもとでほぼ真円の角になる組み合わせ。 */
 .gate-item {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 100%;
-  padding: 18px 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 4% / 13.5%;
+  overflow: hidden;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 14px;
   color: var(--text);
   cursor: pointer;
-  transition: border-color .2s, background .2s, transform .1s;
+  transition: box-shadow .2s, transform .1s;
 }
 
-.gate-item:hover { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.10); }
+/* 画像が枠いっぱいなので、枠線ではなく外側の影で反応を示す
+   (border だと画像の縁に重なって、白フチを消した意味が薄れる) */
+.gate-item:hover { box-shadow: 0 0 0 2px var(--accent); }
 .gate-item:active { transform: scale(0.99); }
 .gate-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .gate-icon {
+  display: block;
   width: 100%;
-  max-width: 78px;
-  height: 78px;
-  object-fit: contain;
+  height: auto;
+  /* 外周の白フチ(実測: 上下 2px / 左右 1px)を枠の外へ出すための拡大。
+     上下は表示高さの 1% が切り取られるので、どの画面幅でも白フチより大きく削れる。 */
+  transform: scale(1.02);
 }
 
 /* ---------- 初期ローディング(API取得完了まで全画面) ---------- */
