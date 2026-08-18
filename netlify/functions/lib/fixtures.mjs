@@ -80,8 +80,12 @@ const NLH = { id: 'gt-nlh', name: "No Limit Hold'em", limit: 'none', category: '
  *   index … レベル行だけの通し番号(1 始まり)。**休憩行は 0** で返る
  *   type  … 1=レベル / 2=休憩(文字列ではなく数値)
  *   先頭に「受付前の休憩」が入る(buildStructure が表示から落とす)
+ *
+ * phase2 = { fromLevel, minutes } を渡すと、そのレベル以降だけレベル長が変わる。
+ * 実データでは 932 大会中 737 大会(79%)が途中でレベル長を短くしており
+ * (20→15 が 349 件 / 15→12 が 294 件 / 25→20 が 53 件)、これが多数派の形。
  */
-function makeLevels(blinds, minutes, breakEvery, breakMinutes) {
+function makeLevels(blinds, minutes, breakEvery, breakMinutes, phase2) {
   const rows = [];
   let id = 0;
   let levelIndex = 0;
@@ -91,7 +95,8 @@ function makeLevels(blinds, minutes, breakEvery, breakMinutes) {
   push(breakRow(30)); // 受付前の休憩。実データには必ず入っている
   blinds.forEach((b, i) => {
     levelIndex += 1;
-    push({ index: levelIndex, type: 1, smallBlind: b[0], bigBlind: b[1], ante: b[2], minutes });
+    const m = phase2 && levelIndex >= phase2.fromLevel ? phase2.minutes : minutes;
+    push({ index: levelIndex, type: 1, smallBlind: b[0], bigBlind: b[1], ante: b[2], minutes: m });
     if ((i + 1) % breakEvery === 0 && i !== blinds.length - 1) push(breakRow(breakMinutes));
   });
   return rows;
@@ -162,6 +167,16 @@ const BLINDS_STANDARD = [
 const LEVELS_STANDARD = makeLevels(BLINDS_STANDARD, 30, 4, 15);
 // 20分レベルの大会用(サテライト / ウィークリー)。イベント側の levelMinutes と揃える
 const LEVELS_TURBO = makeLevels(BLINDS_STANDARD, 20, 4, 10);
+
+/* 後半でレベルが短くなる大会(Lv.1-7 が 25 分 / Lv.8 以降が 20 分)。
+ * Info タブの Level Duration は Lv.1 と Lv.18 を比べて「25 / 20 min」と併記するため
+ * (#52)、確認には **Lv.18 まであって途中でレベル長が変わる**ストラクチャーが要る。
+ * 他の mock は 14 レベルまでの一定長なので、この形をここでだけ用意している。 */
+const BLINDS_DEEP = BLINDS_STANDARD.concat([
+  [10000, 20000, 20000], [15000, 30000, 30000], [20000, 40000, 40000],
+  [25000, 50000, 50000], [30000, 60000, 60000], [40000, 80000, 80000],
+]);
+const LEVELS_TWO_PHASE = makeLevels(BLINDS_DEEP, 25, 4, 15, { fromLevel: 8, minutes: 20 });
 
 // 一つの buyin バリアント
 function buyin(amount, fee, chips, description) {
@@ -445,7 +460,7 @@ function buildEvents(now) {
     statusCode: 'opened',
     // 翌日開催。STARTS IN のカウントダウンが出る(1 ヶ月以内のため)
     startDate: jstDayAt(now, 1, 18, 0),
-    levelMinutes: 30,
+    levelMinutes: 25,   // LEVELS_TWO_PHASE の Lv.1 と揃える
     lateRegLevel: 10,
     guarantee: 3000000,
     cap: 300,
@@ -545,7 +560,7 @@ const LEVELS_BY_ID = {
   'evt-demo-rollover': DEMO_LEVELS,
   'evt-utage-break': LEVELS_STANDARD,
   'evt-wolf-day1a': LEVELS_STANDARD,
-  'evt-utage-deep': LEVELS_STANDARD,
+  'evt-utage-deep': LEVELS_TWO_PHASE,   // 後半が短くなる大会(Level Duration の併記確認用)
   'evt-wolf-sat': LEVELS_TURBO,
   'evt-weekly-bounty': LEVELS_TURBO,
 };
