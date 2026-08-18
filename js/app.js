@@ -165,15 +165,18 @@
    * 全レベルを並べない理由は、"CHEETAH" ULTIMATE TURBO のように 20→18→16→…→2 と
    * 1 レベルずつ短くなる大会があり、そのまま並べると読めなくなるため。
    *
-   * ストラクチャーはカードを開いた時点ではまだ無い(一覧は structure を空で返す)。
-   * その間は Lv.1 の分数だけを出し、詳細が届いた再描画で併記に変わる。 */
+   * ストラクチャーが届くまでは「—」を出す。一覧が持つ ev.levelMinutes は API の
+   * dailyDetails.levelMinutes(大会に 1 つだけの設定値)で、実データ 932 大会のうち
+   * 114 件が実際のレベルと食い違う(全レベル 20 分の大会が 30、全レベル 25 分の大会が
+   * 10 など)。つなぎで出すと誤った分数を見せることになるので、値が確定するまで出さない。
+   * 詳細が届いた再描画で正しい表記に変わる。 */
   function levelDurationText(ev) {
-    var first = levelMinutesOf(ev);
-    if (!first) return '—';
-    var lv18 = (ev.structure || []).find(function (r) {
-      return r.type === 'level' && r.level === 18;
-    });
+    var levels = (ev.structure || []).filter(function (r) { return r.type === 'level'; });
+    if (!levels.length) return '—';
+    var first = levels[0].minutes;
+    var lv18 = levels.find(function (r) { return r.level === 18; });
     var later = lv18 ? lv18.minutes : 0;
+    if (!first) return '—';
     return (later && later !== first ? first + ' / ' + later : first) + ' min';
   }
 
