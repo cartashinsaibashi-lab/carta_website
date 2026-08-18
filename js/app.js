@@ -149,11 +149,35 @@
 
   /* ---------- 各パネルの HTML ---------- */
 
-  /* Level Length。API の levelMinutes が空でも、ストラクチャーの Lv.1 から拾う。 */
+  /* Lv.1 の分数。API の levelMinutes が空でも、ストラクチャーの Lv.1 から拾う。 */
   function levelMinutesOf(ev) {
     if (ev.levelMinutes) return ev.levelMinutes;
     var first = (ev.structure || []).find(function (r) { return r.type === 'level'; });
     return first ? first.minutes : 0;
+  }
+
+  /* Info タブの Level Duration 表記。後半でレベルが短くなる大会は "25 / 20 min" と併記する。
+   *
+   * 実データ(全 932 大会の levels)では 79% が途中でレベル長を変える。内訳は
+   * 20→15(349 件)/ 15→12(294 件)/ 25→20(53 件)などで、変わり目はおおむね Lv.8 前後。
+   * そこで運営の指定(#52)どおり **Lv.1 と Lv.18 を比べる**。Lv.18 が無い(=レベル数が
+   * 17 以下の短い大会)か Lv.1 と同じ長さなら Lv.1 だけを出す。
+   * 全レベルを並べない理由は、"CHEETAH" ULTIMATE TURBO のように 20→18→16→…→2 と
+   * 1 レベルずつ短くなる大会があり、そのまま並べると読めなくなるため。
+   *
+   * ストラクチャーが届くまでは「—」を出す。一覧が持つ ev.levelMinutes は API の
+   * dailyDetails.levelMinutes(大会に 1 つだけの設定値)で、実データ 932 大会のうち
+   * 114 件が実際のレベルと食い違う(全レベル 20 分の大会が 30、全レベル 25 分の大会が
+   * 10 など)。つなぎで出すと誤った分数を見せることになるので、値が確定するまで出さない。
+   * 詳細が届いた再描画で正しい表記に変わる。 */
+  function levelDurationText(ev) {
+    var levels = (ev.structure || []).filter(function (r) { return r.type === 'level'; });
+    if (!levels.length) return '—';
+    var first = levels[0].minutes;
+    var lv18 = levels.find(function (r) { return r.level === 18; });
+    var later = lv18 ? lv18.minutes : 0;
+    if (!first) return '—';
+    return (later && later !== first ? first + ' / ' + later : first) + ' min';
   }
 
   /* ストラクチャー Lv.1 の BB。開始スタックが何 BB 分かの計算に使う。
@@ -173,7 +197,6 @@
   }
 
   function infoPanel(ev) {
-    var mins = levelMinutesOf(ev);
     var rows = [
       ['Date & Time', ev.dateLabel + ' Start'],
       ['Venue', ev.venue],
@@ -181,7 +204,7 @@
       ['Buy-in', yen(ev.fee)],
       ['Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None'],
       ['Starting Chips', startingChipsText(ev)],
-      ['Level Length', mins ? mins + ' min' : '—'],
+      ['Level Duration', levelDurationText(ev)],
       /* カードの Reg Close と同じ内容を出す(片方だけ表記が違うと混乱するため) */
       ['Late Reg', regCloseText(ev) || ev.lateReg || '—'],
       ['Re-entry', ev.reentry],
