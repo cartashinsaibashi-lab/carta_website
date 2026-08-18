@@ -323,7 +323,10 @@
     var body = shown.map(function (r) {
       var posCls = r.pos === 1 ? ' class="row-winner"' : '';
       var medalCls = r.pos <= 3 ? ' pos-' + r.pos : '';
-      var prize = payoutByPos[r.pos] ? prizeLabel(payoutByPos[r.pos]) : yen(r.prize);
+      /* 賞金圏外は「¥0」ではなく「—」。0 円という賞金が出たのではなく賞金が無いだけなので、
+       * ポイントが付かない順位を「—」で示すのと表記を揃える。 */
+      var prize = payoutByPos[r.pos] ? prizeLabel(payoutByPos[r.pos])
+        : (r.prize ? yen(r.prize) : '—');
       return (
         '<tr' + posCls + '>' +
         '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + r.pos + '</span></td>' +
