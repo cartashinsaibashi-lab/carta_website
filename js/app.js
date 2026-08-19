@@ -130,17 +130,17 @@
     var tabs = [];
     if (ev.status === 'running') tabs.push({ key: 'live', label: 'Live' });
     /* 通過日(日をまたぐ大会の最終日以外)はその日の成績が確定しないので、
-     * タブ名を Survivor にして「翌日に進む人の一覧」であることを示す(#54)。
+     * タブ名を Survivors にして「翌日に進む人の一覧」であることを示す(#54)。
      * key は 'results' のまま — 再描画をまたいで選択タブを覚える state.openedTab や
      * 既存のパネル分岐がこのキーを使っており、変えると開き直しでタブが Info に戻る。 */
     if (ev.status === 'past') {
-      tabs.push({ key: 'results', label: ev.carryOver ? 'Survivor' : 'Results' });
+      tabs.push({ key: 'results', label: ev.carryOver ? 'Survivors' : 'Results' });
     }
     tabs.push({ key: 'info', label: 'Info' });
-    /* 通過日(日をまたぐ大会の最終日以外)は Prize タブを出さない。
-     * この日のレコードに紐づくペイアウトは大会全体のもので、その日の成績ではないため
-     * 誤解を招く(#44。運営の指定)。賞金は最終日のカードで見る。 */
-    if (!ev.carryOver) tabs.push({ key: 'prize', label: 'Prize' });
+    /* Prize タブは通過日にも出す。#44 で一度隠したが、あれは「通過日の Results に
+     * 賞金を出さない」という話で、ペイアウト表そのものは通過日にも見たい(運営の指定)。
+     * この日のレコードに紐づくペイアウトは大会全体のもので、賞金額としては正しい。 */
+    tabs.push({ key: 'prize', label: 'Prize' });
     tabs.push({ key: 'structure', label: 'Structure' });
     /* 写真タブは Drive に写真があった大会にだけ出す。写真は運営が任意で上げるもので、
      * 大半の大会には無いため、常設すると「開いても空」のタブばかりになる。
@@ -303,11 +303,19 @@
   }
 
   function resultsPanel(ev) {
+    /* 通過日は入賞者がまだ決まっていないので In the Money を出さず、
+     * 代わりに「翌日へ進む人数」を Remaining として出す(運営の指定)。
+     * 人数は下の表と同じ条件(busted=false)で数えて、見出しと中身を必ず一致させる。 */
+    var remaining = ev.carryOver
+      ? ev.results.filter(function (r) { return !r.busted; }).length
+      : 0;
     var summary =
       '<div class="result-summary">' +
       summaryItem('Total Entries', num(ev.stats.entries)) +
       summaryItem('Prize Pool', yen(ev.stats.prizePool)) +
-      summaryItem('In the Money', ev.stats.itm + ' players') +
+      (ev.carryOver
+        ? summaryItem('Remaining', num(remaining) + ' players')
+        : summaryItem('In the Money', ev.stats.itm + ' players')) +
       '</div>';
 
     /* 通過日(日をまたぐ大会の最終日以外)は賞金ではなく翌日へ持ち込むチップを出す。 */

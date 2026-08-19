@@ -162,11 +162,21 @@ Announcement タブの運用メモ(`Unlimited` / `Level 8 / 18:30` 等)なので
 `payout` は**大会全体の最終成績の賞金**で、その日の成績ではない。実データ
 (`#3 (1A) MAIN EVENT DAY 1A` / 2026-05-27)では 1 位 ¥60,000・3 位 ¥600,000 と、
 その日の順位(通過スタック順)と噛み合わない値が入っていた(payout の日付も最終日の 5/31)。
-代わりに翌日へ持ち込むチップ(`EventPlayer.chipsCount`)を出す(#44)。
-**判定は `results` に `chips > 0` の人が居るか**(adapter の `carryOver`)。
-実データで Day 1A は通過者 12 名が `busted=false` かつ `chipsCount>0`、最終日は全員
-`busted=true` で `chipsCount` が 0。`behaviour.multiDay` や `dailyDetails.day / flight` でも
-2 日制なら判別できるが、3 日制の中日を取りこぼすのでチップの有無で見ている。
+代わりに翌日へ持ち込むチップ(`EventPlayer.chipsCount`)を出す(#44)。タブ名は **Survivors**、
+サマリーは In the Money ではなく **Remaining(翌日へ進む人数)**。**Prize タブ自体は出す** —
+出さないのは Results の賞金であって、ペイアウト表は通過日にも見たい(運営の指定)。
+
+**通過日かどうかの判定は `summaryId` でグループ化し `dailyDetails.day` の最大値と比べる**(#54)。
+`summaryId` は同じ大会の全日程が共有する親レコードのキーで、946 件中 70 件
+(= `behaviour.isFlight` が true の日別レコード)にだけ入る。詳細では
+`GET /v1/event/{id}/flights` で全日程を取って判定し、一覧では出そろっている日別レコードから
+`markMultiDay()` が決める。以前は「`results` に `chips > 0` の人が居るか」で見ていたが、
+**まだ結果が入っていない大会を判別できない**(未開催のグループは全員 0)ため置き換えた。
+flights が取れないときのフォールバックとしてチップ判定は残してある。
+
+**Survivors に出す人の絞り込みは `busted`**。実データ 70 レコード中 69 件は `chipsCount > 0` と
+一致するが、`2026-04-24 #1 MAIN EVENT DAY 1B` だけ `busted=false` が 5 名・`chips>0` が 6 名で
+食い違う(`stats.totalPlayers` は 5)。API の生存者定義に合わせる。
 
 **詳細でだけ返る項目のマージ箇所は 2 つある** — `maybeLoadDetail()` の中と `applyDetail()`。
 片方だけ足すとカードを開いたときには反映されずライブ更新時だけ効く(実際に踏んだ)。
