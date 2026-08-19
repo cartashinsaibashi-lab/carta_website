@@ -498,7 +498,8 @@ export function toDetailEvent(ev, { levels, players, payouts, points, flights, s
      * 通過日は Results の Prize が実態と合わない。実データでは Day 1A のレコードに
      * **最終日(5/31)の賞金**が紐づいており、Day 1A の順位(通過スタック順)と
      * 噛み合わずちぐはぐな表示になっていた(#44)。そのため通過日は賞金ではなく
-     * 翌日へ持ち込むチップを出し(Survivor タブ)、Prize タブも隠す(フロント側で分岐)。 */
+     * 翌日へ持ち込むチップを出す(Survivors タブ)。ペイアウト表そのものは通過日にも
+     * 見たいので Prize タブは出す(#44 で一度隠したが運営の指定で戻した)。 */
     const dayResults = buildResults(players);
     const maxDay = maxDayOf(flights);
     out.carryOver = base.isFlight && maxDay > 0
