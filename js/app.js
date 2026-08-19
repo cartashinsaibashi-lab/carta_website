@@ -393,6 +393,9 @@
   function projectedStep(ev) {
     var lv = ev.live;
     var steps = ev.structure || [];
+    /* endsAt が無いときは繰り上げない。一時停止中(lv.paused)は adapter が endsAt を
+     * 渡さないので、ここで自動的に止まる — 会場が止めている間に次のレベルへ
+     * 進めてしまわないため(#55)。 */
     if (!lv || lv.endsAt == null || lv.stepIndex == null) return null;
     var now = Date.now();
     if (lv.endsAt > now) { ev._rollover = null; return null; }
@@ -466,10 +469,16 @@
      * (ストラクチャーに休憩が無い等)は行ごと省く。
      * 休憩中も出さない — 今まさに休憩なのに「次の休憩まで 2:10:34」と出しても
      * 読み手の役に立たず、今の休憩の残り時間(上の大きなタイマー)と紛らわしいため。 */
-    var breakHtml = lv.breakAt && !lv.isBreak
-      ? '<br>Next break in <span class="live-break-countdown" data-break-timer data-ends-at="' +
-        lv.breakAt + '">' + esc(fmtCountdown(lv.breakAt - Date.now())) + '</span>'
-      : '';
+    var breakHtml = '';
+    if (!lv.isBreak && lv.breakAt) {
+      breakHtml = '<br>Next break in <span class="live-break-countdown" data-break-timer data-ends-at="' +
+        lv.breakAt + '">' + esc(fmtCountdown(lv.breakAt - Date.now())) + '</span>';
+    } else if (!lv.isBreak && lv.paused && lv.breakInSec != null) {
+      /* 一時停止中は絶対時刻(breakAt)が無いので、止まった時点の残り秒を固定で出す。
+       * レベルのタイマーと足並みを揃えるため、こちらも減らさない。 */
+      breakHtml = '<br>Next break in <span class="live-break-countdown">' +
+        esc(fmtCountdown(lv.breakInSec * 1000)) + '</span>';
+    }
 
     /* 休憩中は見出しを BREAK にし、ブラインド行を出さない。
      * 休憩行の sb/bb/ante は実データでも 0 なので、そのまま出すと「0 / 0 ante 0」という
@@ -479,12 +488,22 @@
       '<div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
       '<span class="live-ante">ante ' + num(lv.ante) + '</span></div>';
 
+    /* 一時停止中はカウントダウンを動かさない。data-timer を付けなければ
+     * startTimers() が interval を貼らないので、残り時間が固定表示になる(#55)。
+     * Paused バッジはタイマーに重ねて出し、ゆっくり点滅させる(運営の指定)。 */
+    var timerAttrs = lv.paused
+      ? ''
+      : ' data-timer data-remaining="' + lv.remainingSec + '"' + (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '');
+    var pausedHtml = lv.paused ? '<span class="live-paused">Paused</span>' : '';
+
     return (
       '<div class="live-board">' +
-      '  <div class="live-clock">' +
+      '  <div class="live-clock' + (lv.paused ? ' is-paused' : '') + '">' +
       '    <div class="live-level">' + headline + '</div>' +
-      '    <div class="live-timer" data-timer data-remaining="' + lv.remainingSec + '"' +
-      (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '') + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
+      '    <div class="live-timer-wrap">' +
+      '      <div class="live-timer"' + timerAttrs + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
+      pausedHtml +
+      '    </div>' +
       blindsHtml +
       '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + breakHtml + '</div>' +
       '  </div>' +
@@ -1356,6 +1375,13 @@
   var livePollTimer = null;
   var livePollId = null;
   var LIVE_POLL_MS = 25000;
+  /* 一時停止中だけポーリングを速める(#55)。
+   * 再開は「次の取得で status.code が Running に戻っていること」でしか分からないので、
+   * 通常の 25 秒 + CDN キャッシュ 10 秒だと復帰まで最大 35 秒かかり、会場が再開しても
+   * タイマーが止まったままに見える。停止中は取得を 10 秒間隔にし、あわせて BFF 側の
+   * キャッシュも 5 秒に縮めて(event.mjs)、最大 15 秒で復帰するようにしてある。
+   * 停止はカードを開いている間の一時的な状態なので、この間だけ倍の頻度でも負荷は増えない。 */
+  var LIVE_POLL_PAUSED_MS = 10000;
 
   function applyDetail(ev, d) {
     if (!d || d.error) return false;
@@ -1456,15 +1482,36 @@
     var ev = findEvent(id);
     if (!ev || ev.status !== 'running') return; // 進行中のみ
     livePollId = id;
-    livePollTimer = setInterval(function () {
-      if (document.hidden) return;                       // タブ非表示中はスキップ
+
+    /* setInterval ではなく毎回スケジュールし直す。一時停止/再開で間隔が変わるため、
+     * 次の 1 回を「今の状態」に合わせて決める必要がある。 */
+    var isPaused = function () {
+      var cur = findEvent(id);
+      return !!(cur && cur.live && cur.live.paused);
+    };
+    var tick = function () {
       if (state.openedId !== id) { stopLivePolling(); return; }
-      pollLiveOnce(id);
-    }, LIVE_POLL_MS);
+      /* タブ非表示中は取得しない(復帰時に間隔ぶん待つだけで、無駄な取得を増やさない)。
+       *
+       * ライブのポーリングは常に fresh(= ブラウザの HTTP キャッシュを迂回)で取る。
+       * 応答は stale-while-revalidate 付きで、ポーリング間隔(25 秒 / 停止中 10 秒)は
+       * 必ず max-age(10 秒 / 5 秒)より長いため、素直に fetch すると毎回
+       * 「古い応答をそのまま返してから裏で再検証」になっていた。実測すると
+       * 1 回のポーリングでネットワークが 2 本走り、しかも画面に入るのは 1 周ぶん古い
+       * データという二重の損。BFF は ETag を返さないので再検証も本文込みの 200 が丸ごと流れる。
+       * no-store にすれば 1 本で最新が入る。CDN 側のキャッシュ(s-maxage)は効いたままなので
+       * PokerLens への負荷は変わらない。 */
+      if (!document.hidden) pollLiveOnce(id, { fresh: true });
+      schedule();
+    };
+    var schedule = function () {
+      livePollTimer = setTimeout(tick, isPaused() ? LIVE_POLL_PAUSED_MS : LIVE_POLL_MS);
+    };
+    schedule();
   }
 
   function stopLivePolling() {
-    if (livePollTimer) { clearInterval(livePollTimer); livePollTimer = null; }
+    if (livePollTimer) { clearTimeout(livePollTimer); livePollTimer = null; }
     livePollId = null;
     stopLevelEndRetry();
   }

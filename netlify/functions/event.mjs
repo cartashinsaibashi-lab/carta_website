@@ -4,7 +4,7 @@
 // フロントはカード展開時に /api/events/:id を取得し、一覧のイベントにマージする。
 
 import { plGet, plPost } from './lib/pokerlens.mjs';
-import { toDetailEvent, buildStructure, buildResults, buildPayouts } from './lib/adapter.mjs';
+import { toDetailEvent, buildStructure, buildResults, buildPayouts, pausedLive } from './lib/adapter.mjs';
 import { pointsForEvent } from './lib/ranking.mjs';
 import { json, handle } from './lib/http.mjs';
 
@@ -45,8 +45,12 @@ export default async (_req, context) =>
       pointsForEvent(id).catch(() => null),
     ]);
 
-    // running は毎回鮮度が要るので短め、それ以外は長めにキャッシュ(stale-while-revalidate 付き)
-    const cacheSeconds = code === 'running' ? 10 : 120;
+    /* running は毎回鮮度が要るので短め、それ以外は長めにキャッシュ(stale-while-revalidate 付き)。
+     * 一時停止中はさらに短くする — 再開は次の取得で status.code が Running に戻ることでしか
+     * 分からず、キャッシュ 10 秒 + フロントのポーリング 25 秒だと復帰まで最大 35 秒かかる。
+     * 停止中はフロント側も 10 秒間隔に上げるので、合わせて最大 15 秒で復帰する(#55)。
+     * 一時停止は status.code が Opened に戻る(= adapter の pausedLive)。 */
+    const cacheSeconds = code === 'running' ? 10 : pausedLive(ev) ? 5 : 120;
     return json(toDetailEvent(ev, { levels, players, payouts, points }), {
       cacheSeconds,
       swrSeconds: cacheSeconds * 10,
