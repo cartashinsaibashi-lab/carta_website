@@ -1756,25 +1756,37 @@
         });
       });
 
-      /* お気に入り(★)トグル */
-      var favBtn = card.querySelector('.fav-btn');
-      if (favBtn) {
-        var handleFav = function (e) {
-          e.stopPropagation();
-          storeToggle(FAV_KEY, favBtn.dataset.fav);
-          var fav = isFav(favBtn.dataset.fav);
-          favBtn.classList.toggle('is-fav', fav);
-          favBtn.textContent = fav ? '★' : '☆';
-          favBtn.setAttribute('aria-pressed', fav);
-          if (state.favOnly && !fav) render();
-        };
-        favBtn.addEventListener('click', handleFav);
-        favBtn.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleFav(e); }
-        });
-      }
     });
   }
+
+  /* お気に入り(★)トグル — listEl への委譲で扱う。
+   *
+   * 以前は bindCards() で ★ の要素そのものにリスナーを貼っていたが、一覧の自動更新(#60)で
+   * 閉じているカードの見出しを innerHTML ごと差し替えるようになり、差し替えのたびに
+   * リスナーが外れて押せなくなっていた(次の全体再描画まで復活しない)。座席表の卓タブと
+   * 同じく listEl 側に置けば、中身が何度作り直されても効き続ける。
+   *
+   * **capture フェーズで拾うのが要点**。★ は .card-head ボタンの内側にあるため、
+   * bubble で待つと先にカード展開のリスナーが走ってカードが開いてしまう。
+   * capture なら listEl のほうが先に呼ばれるので、そこで stopPropagation して止められる。 */
+  function handleFavEvent(e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.fav-btn') : null;
+    if (!btn) return;
+    if (e.type === 'keydown') {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault(); // Space でのスクロールを止める
+    }
+    e.stopPropagation(); // カードの開閉を巻き添えにしない
+    storeToggle(FAV_KEY, btn.dataset.fav);
+    var fav = isFav(btn.dataset.fav);
+    btn.classList.toggle('is-fav', fav);
+    btn.textContent = fav ? '★' : '☆';
+    btn.setAttribute('aria-pressed', fav);
+    // お気に入り絞り込み中に外したらカードが消えるため描き直す(表示位置は保つ)
+    if (state.favOnly && !fav) renderKeepingView();
+  }
+  listEl.addEventListener('click', handleFavEvent, true);
+  listEl.addEventListener('keydown', handleFavEvent, true);
 
   /* 卓の表示を切り替える(タブ本体と座席図の両方)。卓タブと着席者一覧の行の
    * どちらからも呼ばれる。再描画は伴わないので、開いているカードの状態は保たれる。 */
