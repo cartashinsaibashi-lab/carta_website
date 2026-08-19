@@ -490,6 +490,33 @@ function buildEvents(now) {
       totalTables: 5, guaranteedAmount: 3000000,
     },
   }),
+  /* タイマーが一時停止している大会(#55)。実データでは管理画面で Paused にすると
+   * **status.code が開始前と同じ 'opened' に戻り**、status.date と elapsedSeconds が
+   * 止まったまま更新されなくなる(2026-08-19 に本番の #1 Demo で確認)。
+   * この形を mock でも再現しておかないと、カウントダウン停止と Paused バッジを
+   * ローカルで確認できない。statusDate を 10 分前にしているのは、
+   * 「止まってから時間が経っても endsAt が過去にずれていかない」ことを見るため。 */
+  venueEvent({
+    id: 'evt-wolf-paused',
+    name: 'Wolf Night Turbo (paused)',
+    league: LEAGUE_WOLF,
+    statusCode: 'opened',
+    startDate: jstWallClock(liveStart),
+    statusDate: jstInstant(now - 10 * 60000),   // 10 分前に止まったまま更新されていない
+    levelMinutes: 30,
+    levelIndex: 6,
+    levelId: 8,           // LEVELS_STANDARD の Lv.6(30 分)
+    elapsedSeconds: 1214, // 30 分レベルの 20:14 経過 → 残り 09:46 で停止
+    lateRegLevel: 8,
+    guarantee: 1000000,
+    description: '一時停止の確認用。カウントダウンは動かず Paused が点滅します。',
+    buyin: buyin(10000, 1000, 25000, 'Turbo'),
+    stats: {
+      totalEntries: 48, totalPlayers: 22, averageChipsCount: 54500,
+      totalChipsCount: 1199000, totalPayoutAmount: 1000000, totalPayouts: 6,
+      totalTables: 3, guaranteedAmount: 1000000,
+    },
+  }),
   venueEvent({
     id: 'evt-utage-deep',
     name: 'Utage Deepstack',
@@ -656,6 +683,7 @@ const LEVELS_BY_ID = {
   ),
   'evt-demo-rollover': DEMO_LEVELS,
   'evt-utage-break': LEVELS_STANDARD,
+  'evt-wolf-paused': LEVELS_STANDARD,   // 一時停止の確認用(Lv.6 で停止)
   'evt-wolf-day1a': LEVELS_STANDARD,
   'evt-utage-deep': LEVELS_TWO_PHASE,   // 後半が短くなる大会(Level Duration の併記確認用)
   'evt-wolf-sat': LEVELS_TURBO,

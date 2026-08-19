@@ -1805,6 +1805,37 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 body[data-theme="wolf"] .live-blinds,
 body[data-theme="wolf"] .live-timer { font-style: italic; }
 
+/* 会場がタイマーを止めているときの Paused バッジ(#55)。
+   タイマーの下端に重ねて出す(運営指定のモックに合わせている。独立した行にすると
+   ライブ画面が 1 行ぶん伸びて、下のブラインド以降の位置が停止のたびに動くため)。
+   点滅は 2 秒周期のゆっくりしたフェード — 目に留まるが読む邪魔をしない速さ。 */
+.live-timer-wrap { position: relative; }
+
+.live-paused {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, -45%);
+  padding: 4px 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  animation: live-paused-blink 2s ease-in-out infinite;
+}
+
+@keyframes live-paused-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* 一時停止中は動いていない時計だと分かるよう、数字を少し落とす */
+.live-clock.is-paused .live-timer { color: var(--text-dim); }
+
 .live-next { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; }
 
 .live-stats {
@@ -2971,6 +3002,8 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   .card-body { transition: none; }
   .detail-panel.is-active { animation: none; }
   .dot-live, .live-flash, .detail-tab[data-tab="live"]::before { animation: none; }
+  /* 点滅は止めるが、一時停止中であることは伝えたいのでバッジ自体は出したままにする */
+  .live-paused { animation: none; }
   /* 動きを止める設定では、説明文は流さず折り返して全文を出す */
   .event-ticker { overflow: visible; -webkit-mask-image: none; mask-image: none; }
   .event-ticker-track { animation: none; width: auto; }
