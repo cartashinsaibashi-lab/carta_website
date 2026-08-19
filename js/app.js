@@ -393,6 +393,9 @@
   function projectedStep(ev) {
     var lv = ev.live;
     var steps = ev.structure || [];
+    /* endsAt が無いときは繰り上げない。一時停止中(lv.paused)は adapter が endsAt を
+     * 渡さないので、ここで自動的に止まる — 会場が止めている間に次のレベルへ
+     * 進めてしまわないため(#55)。 */
     if (!lv || lv.endsAt == null || lv.stepIndex == null) return null;
     var now = Date.now();
     if (lv.endsAt > now) { ev._rollover = null; return null; }
@@ -466,10 +469,16 @@
      * (ストラクチャーに休憩が無い等)は行ごと省く。
      * 休憩中も出さない — 今まさに休憩なのに「次の休憩まで 2:10:34」と出しても
      * 読み手の役に立たず、今の休憩の残り時間(上の大きなタイマー)と紛らわしいため。 */
-    var breakHtml = lv.breakAt && !lv.isBreak
-      ? '<br>Next break in <span class="live-break-countdown" data-break-timer data-ends-at="' +
-        lv.breakAt + '">' + esc(fmtCountdown(lv.breakAt - Date.now())) + '</span>'
-      : '';
+    var breakHtml = '';
+    if (!lv.isBreak && lv.breakAt) {
+      breakHtml = '<br>Next break in <span class="live-break-countdown" data-break-timer data-ends-at="' +
+        lv.breakAt + '">' + esc(fmtCountdown(lv.breakAt - Date.now())) + '</span>';
+    } else if (!lv.isBreak && lv.paused && lv.breakInSec != null) {
+      /* 一時停止中は絶対時刻(breakAt)が無いので、止まった時点の残り秒を固定で出す。
+       * レベルのタイマーと足並みを揃えるため、こちらも減らさない。 */
+      breakHtml = '<br>Next break in <span class="live-break-countdown">' +
+        esc(fmtCountdown(lv.breakInSec * 1000)) + '</span>';
+    }
 
     /* 休憩中は見出しを BREAK にし、ブラインド行を出さない。
      * 休憩行の sb/bb/ante は実データでも 0 なので、そのまま出すと「0 / 0 ante 0」という
@@ -479,12 +488,22 @@
       '<div class="live-blinds">' + num(lv.sb) + ' / ' + num(lv.bb) +
       '<span class="live-ante">ante ' + num(lv.ante) + '</span></div>';
 
+    /* 一時停止中はカウントダウンを動かさない。data-timer を付けなければ
+     * startTimers() が interval を貼らないので、残り時間が固定表示になる(#55)。
+     * Paused バッジはタイマーに重ねて出し、ゆっくり点滅させる(運営の指定)。 */
+    var timerAttrs = lv.paused
+      ? ''
+      : ' data-timer data-remaining="' + lv.remainingSec + '"' + (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '');
+    var pausedHtml = lv.paused ? '<span class="live-paused">Paused</span>' : '';
+
     return (
       '<div class="live-board">' +
-      '  <div class="live-clock">' +
+      '  <div class="live-clock' + (lv.paused ? ' is-paused' : '') + '">' +
       '    <div class="live-level">' + headline + '</div>' +
-      '    <div class="live-timer" data-timer data-remaining="' + lv.remainingSec + '"' +
-      (lv.endsAt ? ' data-ends-at="' + lv.endsAt + '"' : '') + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
+      '    <div class="live-timer-wrap">' +
+      '      <div class="live-timer"' + timerAttrs + '>' + fmtSec(remainSec(lv.endsAt, lv.remainingSec)) + '</div>' +
+      pausedHtml +
+      '    </div>' +
       blindsHtml +
       '    <div class="live-next">NEXT: ' + esc(lv.nextLevel) + breakHtml + '</div>' +
       '  </div>' +

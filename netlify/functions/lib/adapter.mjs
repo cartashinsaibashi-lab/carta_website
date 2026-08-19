@@ -71,11 +71,32 @@ function categoryOf(ev) {
   return 'other';
 }
 
+/* 会場がタイマーを一時停止しているか。
+ *
+ * PokerLens の API に「一時停止」を表す値は無く、**管理画面で Paused にすると
+ * status.code が開始前と同じ `Opened` に戻る**(2026-08-19 に本番の #1 Demo と
+ * #1 FREE ROLL で、管理画面の表示と API 応答を突き合わせて確認)。
+ *   管理画面 In progress → code = Running
+ *   管理画面 Paused      → code = Opened
+ * そのため「まだ始まっていない大会」と区別する必要がある。判定材料は現在位置で、
+ * levels の先頭は必ず受付前の休憩(id=1)なので、**id が 2 以上か経過秒があれば開始済み**。
+ * 実データ 2026-04 以降の Opened 29 件のうちこの条件に当たるのは一時停止中の 1 件だけで、
+ * 過去の大会が誤って「開催中」に戻ることはない。 */
+function pausedLive(ev) {
+  const st = ev.status || {};
+  if (String(st.code || '').toLowerCase() !== 'opened') return false;
+  const lvl = st.level || {};
+  return num(lvl.elapsedSeconds) > 0 || num(lvl.id) > 1;
+}
+
 // status.code(Opened|Running|Closed。大文字小文字はAPIで揺れる)→ running|future|past
 function statusOf(ev) {
   const code = String((ev.status && ev.status.code) || '').toLowerCase();
   if (code === 'running') return 'running';
   if (code === 'closed') return 'past';
+  // 一時停止中も「開催中」として扱う。future に落とすと Live タブごと消えて、
+  // 開催予定のカード(STARTS IN のカウントダウン)に化けてしまう。
+  if (pausedLive(ev)) return 'running';
   return 'future'; // opened / scheduled など
 }
 
@@ -176,8 +197,14 @@ function buildLive(ev, levels) {
   // クライアントが (endsAt - now) で毎秒計算すれば、取得ラグ / CDN キャッシュの古さ /
   // カード展開までの時間に依存せず自己補正できる(スナップショットのまま表示すると
   // その古さ分だけタイマーが遅れる = 残りが多く見える)。
+  //
+  // ただし一時停止中は endsAt を渡さない。会場が止めている間 status.date も
+  // elapsedSeconds も更新されないため、endsAt(= 過去の時刻 + 残り)を基準にすると
+  // 画面のカウントダウンだけが進んで 0 になり、次のレベルへ繰り上がってしまう(#55)。
+  // 代わりに remainingSec の固定値をそのまま表示させる。
+  const paused = pausedLive(ev);
   const statusDateMs = Date.parse(st.date);
-  const endsAt = Number.isFinite(statusDateMs) ? statusDateMs + remaining * 1000 : null;
+  const endsAt = !paused && Number.isFinite(statusDateMs) ? statusDateMs + remaining * 1000 : null;
 
   // 現在位置より後の最初のレベル / 休憩
   let next = null, nextBreak = null;
@@ -190,12 +217,18 @@ function buildLive(ev, levels) {
   // 次の休憩が始まる絶対時刻(ms epoch)。
   // 現在レベルの終了時刻に、そこから休憩までの各レベルの長さを足していく。
   // endsAt と同じく絶対時刻で渡し、クライアントが (breakAt - now) で毎秒計算する。
-  let breakAt = null;
-  if (endsAt != null) {
-    let ms = endsAt;
+  // 一時停止中は絶対時刻が使えないので、代わりに「休憩まであと何秒か」を固定値で渡す。
+  let breakAt = null, breakInSec = null;
+  {
+    let ms = endsAt, sec = remaining;
     for (let i = pos + 1; i < arr.length; i++) {
-      if (isBreak(arr[i])) { breakAt = ms; break; }
+      if (isBreak(arr[i])) {
+        if (endsAt != null) breakAt = ms;
+        breakInSec = sec;
+        break;
+      }
       ms += num(arr[i].minutes) * 60000;
+      sec += num(arr[i].minutes) * 60;
     }
   }
 
@@ -218,10 +251,14 @@ function buildLive(ev, levels) {
     ante: cur ? num(cur.ante) : 0,
     remainingSec: remaining,
     endsAt: endsAt, // レベル終了の絶対時刻(ms epoch)。クライアントが real-time 補正に使う
+    /* 会場がタイマーを止めているか。true のときフロントはカウントダウンを動かさず、
+     * レベルの繰り上げも行わない(pausedLive() の説明を参照)。 */
+    paused: paused,
 
     nextLevel: next ? `SB ${num(next.smallBlind)} / BB ${num(next.bigBlind)}` : '',
     nextBreak: nextBreak ? `${num(nextBreak.minutes)} min break` : '',
-    breakAt: breakAt, // 次の休憩開始の絶対時刻(ms epoch)。無ければ null
+    breakAt: breakAt, // 次の休憩開始の絶対時刻(ms epoch)。無ければ null(一時停止中も null)
+    breakInSec: breakInSec, // 次の休憩までの残り秒。一時停止中の固定表示に使う
     tables: num(ev.stats && ev.stats.totalTables),
   };
 }
