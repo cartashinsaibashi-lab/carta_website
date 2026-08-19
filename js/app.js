@@ -1492,11 +1492,16 @@
     var tick = function () {
       if (state.openedId !== id) { stopLivePolling(); return; }
       /* タブ非表示中は取得しない(復帰時に間隔ぶん待つだけで、無駄な取得を増やさない)。
-       * 一時停止中は fresh(= HTTP キャッシュを迂回)で取る。停止中の応答は
-       * max-age=5 / stale-while-revalidate なので、素直に fetch すると
-       * ブラウザが古い応答をそのまま返したうえで裏で再検証しに行き、
-       * 「取得は 2 回走るのに画面は 1 周ぶん古い」状態になる。 */
-      if (!document.hidden) pollLiveOnce(id, { fresh: isPaused() });
+       *
+       * ライブのポーリングは常に fresh(= ブラウザの HTTP キャッシュを迂回)で取る。
+       * 応答は stale-while-revalidate 付きで、ポーリング間隔(25 秒 / 停止中 10 秒)は
+       * 必ず max-age(10 秒 / 5 秒)より長いため、素直に fetch すると毎回
+       * 「古い応答をそのまま返してから裏で再検証」になっていた。実測すると
+       * 1 回のポーリングでネットワークが 2 本走り、しかも画面に入るのは 1 周ぶん古い
+       * データという二重の損。BFF は ETag を返さないので再検証も本文込みの 200 が丸ごと流れる。
+       * no-store にすれば 1 本で最新が入る。CDN 側のキャッシュ(s-maxage)は効いたままなので
+       * PokerLens への負荷は変わらない。 */
+      if (!document.hidden) pollLiveOnce(id, { fresh: true });
       schedule();
     };
     var schedule = function () {
