@@ -247,6 +247,37 @@ function makeCarryOverPlayers(total, advancing) {
   });
 }
 
+/* 最終日のレコードに載る「その日に来た人」。実データの最終日は全員 busted=true で
+ * chipsCount は 0、賞金はファイナルテーブルぶんだけが入る。 */
+function makeFinalDayPlayers(count) {
+  const prizes = [1800000, 1100000, 700000, 480000, 360000, 280000, 220000, 180000, 150000];
+  return Array.from({ length: count }, (_, i) => ({
+    position: i + 1,
+    busted: true,
+    chipsCount: 0,
+    player: makePlayer(i),
+    payout: { payoutAmount: prizes[i] || 0, bountyAmount: 0 },
+  }));
+}
+
+/* 親(サマリー)レコードの players。**大会全体の最終成績**で、順位は 1 位から通しで並び、
+ * 入賞圏(itm 位)までに賞金が付く。実データの親は 200 名・賞金付き 32 名だった。
+ * 最終日のカードはこちらを使って入賞者を全員出す(#54)。 */
+function makeSummaryPlayers(total, itm) {
+  // 金額は PAYOUTS_BY_ID['evt-wolf-final'] と揃える(Prize タブと Results で同額に見えるように)
+  const prizes = [
+    1800000, 1100000, 700000, 480000, 360000, 280000, 220000, 180000, 150000,
+    120000, 120000, 120000, 110000, 110000, 110000, 100000, 100000, 100000,
+  ];
+  return Array.from({ length: total }, (_, i) => ({
+    position: i + 1,
+    busted: true,
+    chipsCount: 0,
+    player: makePlayer(i),
+    payout: { payoutAmount: i < itm ? prizes[i] || 0 : 0, bountyAmount: 0 },
+  }));
+}
+
 // 進行中の大会の着席者(Live タブの座席表用)。
 // 実データと同じく tableIndex / seatIndex / chipsCount を持ち、busted は false。
 // 一部の席は飛ばして、バストで抜けた空席がある状態を再現する。
@@ -298,7 +329,8 @@ function venueEvent(over) {
     dailyDetails: {
       name: over.name,
       startDate: over.startDate, // ローカル wall-clock 想定の ISO(例 2026-07-30T12:00:00)
-      day: over.day || 1,
+      // 実データでは単日大会も親レコードも day=0 で、日別レコードだけ 1,2,3… が入る
+      day: over.day || 0,
       flight: over.flight || '',
       levelMinutes: over.levelMinutes || 30,
       playerAllowed: over.cap || 0,
@@ -310,6 +342,9 @@ function venueEvent(over) {
       description: over.announcement || '',
       logoUrl: '',
     },
+    /* 日をまたぐ大会は、同じ大会の全日程が同じ summaryId(= 親レコードの referenceId)を持つ。
+     * 実データでは日別レコードにだけ入り、親(isSummary)には入らない(#54)。 */
+    summaryId: over.summaryId || undefined,
     behaviour: {
       code: over.behaviourCode || 'freezeout',
       tags: over.tags || '',
@@ -317,6 +352,8 @@ function venueEvent(over) {
       league: over.league,
       days: over.days || 1,
       multiDay: !!over.multiDay,
+      isFlight: !!over.isFlight,   // 日別レコード(Day 1A / Day 2 …)
+      isSummary: !!over.isSummary, // 大会全体をまとめた親レコード
     },
     stats: Object.assign(
       {
@@ -534,6 +571,9 @@ function buildEvents(now) {
     startDate: jstDayAt(now, -6, 12, 30),
     flight: 'A',
     multiDay: true,
+    day: 1,
+    isFlight: true,
+    summaryId: CHAMP_SUMMARY_REF,
     levelMinutes: 40,
     lateRegLevel: 9,
     guarantee: 6000000,
@@ -543,9 +583,66 @@ function buildEvents(now) {
     stats: {
       totalEntries: 66, totalPlayers: 12, averageChipsCount: 275000,
       totalChipsCount: 3300000, totalPayoutAmount: 6000000, totalPayouts: 32, totalTables: 0,
+      // Day 1 は「その日の参加者」= 自フライトの数、「全体」= 4 フライト合計(#54)
+      totalEntriesDay: 66, totalEntriesGlobal: 180,
+    },
+  }),
+  /* 同じ大会の最終日。**最終日のレコードにはその日に来た人しか居ない**(実データの
+   * #3 (3) MAIN EVENT DAY 3 FINAL は入賞 32 名に対し結果 9 名だった)。ここでも
+   * PLAYERS_BY_ID には 9 名だけ入れてあり、入賞 18 名を出すには親レコードが要る。
+   * この状態を作っておかないと「親から取り直す」経路がローカルで確認できない(#54)。 */
+  venueEvent({
+    id: 'evt-wolf-final',
+    name: 'Wolf Championship — Final Day',
+    league: LEAGUE_WOLF,
+    statusCode: 'closed',
+    startDate: jstDayAt(now, -4, 12, 0),
+    multiDay: true,
+    day: 2,
+    isFlight: true,
+    summaryId: CHAMP_SUMMARY_REF,
+    levelMinutes: 40,
+    lateRegLevel: 9,
+    guarantee: 6000000,
+    description: '4 フライトを勝ち抜いた 24 名で優勝を決めます。',
+    buyin: buyin(30000, 3000, 30000, 'Standard'),
+    allowRebuy: true,
+    stats: {
+      totalEntries: 180, totalPlayers: 0, averageChipsCount: 0,
+      totalChipsCount: 0, totalPayoutAmount: 6000000, totalPayouts: 18, totalTables: 0,
+      totalEntriesDay: 24, totalEntriesGlobal: 180,
     },
   }),
   ];
+}
+
+/* 日をまたぐ大会の親(サマリー)レコード。
+ * 実 API の検索は includeSummary:false だと返さないので、一覧(buildEvents)には入れず
+ * ここだけで持つ。GET /v1/event/{親id} と /players、各日の /flights から参照される。
+ * 順位は「大会全体の最終成績」で、入賞 18 名ぶんの賞金が付く。 */
+const CHAMP_SUMMARY_REF = 'ref-wolf-champ'; // 日別レコードの summaryId(= 親の referenceId)
+const CHAMP_SUMMARY_ID = 'evt-wolf-champ';  // 親レコードの id(flights からしか引けない)
+
+function championshipSummary(now) {
+  const ev = venueEvent({
+    id: CHAMP_SUMMARY_ID,
+    name: 'Wolf Championship',
+    league: LEAGUE_WOLF,
+    statusCode: 'closed',
+    startDate: jstDayAt(now, -6, 12, 30),
+    multiDay: true,
+    day: 0,
+    isSummary: true,
+    levelMinutes: 40,
+    guarantee: 6000000,
+    buyin: buyin(30000, 3000, 30000, 'Standard'),
+    stats: {
+      totalEntries: 180, totalPlayers: 0, totalPayoutAmount: 6000000, totalPayouts: 18,
+      totalEntriesDay: 180, totalEntriesGlobal: 180,
+    },
+  });
+  ev.referenceId = CHAMP_SUMMARY_REF; // 子の summaryId はこの値を指す
+  return ev;
 }
 
 const LEVELS_BY_ID = {
@@ -570,6 +667,8 @@ const PLAYERS_BY_ID = {
   'evt-wolf-main': makeSeatedPlayers(138, 9),   // 進行中: 9 max × 16 卓ぶんの着席者
   'evt-utage-break': makeSeatedPlayers(41, 9),  // 休憩中: 5 卓ぶんの着席者
   'evt-wolf-day1a': makeCarryOverPlayers(66, 12), // 通過日: 66 エントリー中 12 名が翌日へ
+  'evt-wolf-final': makeFinalDayPlayers(9),      // 最終日: その日に来たファイナルテーブルの 9 名だけ
+  'evt-wolf-champ': makeSummaryPlayers(40, 18),  // 親: 大会全体の最終成績(入賞 18 名)
 };
 
 const PAYOUTS_BY_ID = {
@@ -595,6 +694,16 @@ const PAYOUTS_BY_ID = {
     [1, 30, 1800000], [2, 20, 1200000], [3, 13, 780000], [4, 9, 540000],
     [5, 7, 420000], [6, 5.5, 330000], [7, 4.5, 270000], [8, 3.5, 210000],
     [9, 2.5, 150000], [10, 2.5, 150000], [11, 1.5, 90000], [12, 1, 60000],
+  ]),
+  /* 最終日と親レコードのペイアウトは 18 席。9 位より下まで賞金が出るので、
+   * Results は 18 位まで並ぶ(表示範囲のロジックは従来どおり max(9 位, ペイアウト最下位))。
+   * 最終日のレコードには 9 名しか居ないため、10〜18 位は親から取り直せていないと出ない(#54)。 */
+  'evt-wolf-final': makePayouts([
+    [1, 30, 1800000], [2, 18.3, 1100000], [3, 11.7, 700000], [4, 8, 480000],
+    [5, 6, 360000], [6, 4.7, 280000], [7, 3.7, 220000], [8, 3, 180000],
+    [9, 2.5, 150000], [10, 2, 120000], [11, 2, 120000], [12, 2, 120000],
+    [13, 1.8, 110000], [14, 1.8, 110000], [15, 1.8, 110000],
+    [16, 1.7, 100000], [17, 1.7, 100000], [18, 1.7, 100000],
   ]),
   // 未設定の大会(payouts が空 = まだ組んでいない)は evt-utage-deep で再現
 };
@@ -695,13 +804,25 @@ export function mockRequest(method, path, body) {
   if (m) {
     const id = m[1];
     const part = m[2];
-    const ev = findEvent(id);
+    /* 親(サマリー)レコードは検索結果には出ないが、id を直接指定すれば引ける。
+     * 最終日の入賞者はここの players から取り直す(#54)。 */
+    const summary = championshipSummary(Date.now());
+    const ev = id === summary.id ? summary : findEvent(id);
     if (!ev) return null;
     if (!part) return ev; // GET /v1/event/{id}
     if (part === 'levels') return LEVELS_BY_ID[id] || [];
     if (part === 'players') return PLAYERS_BY_ID[id] || [];
     if (part === 'structure') return LEVELS_BY_ID[id] || [];
     if (part === 'payouts') return PAYOUTS_BY_ID[id] || [];
+    /* GET /v1/event/{id}/flights — 同じ大会の全日程。実 API は親(day=0)も含めて返し、
+     * これが**親の id を知る唯一の経路**になる(子の summaryId は親の referenceId で、
+     * GET /v1/event/{summaryId} は 404)。日別レコード以外は null を返す。 */
+    if (part === 'flights') {
+      const ref = ev.summaryId || (ev.behaviour && ev.behaviour.isSummary ? ev.referenceId : null);
+      if (!ref) return null;
+      const days = events.filter((e) => e.summaryId === ref);
+      return days.length ? [summary].concat(days) : null;
+    }
   }
 
   // 未対応 path はエラーにせず空で返す(開発中の握りつぶし)

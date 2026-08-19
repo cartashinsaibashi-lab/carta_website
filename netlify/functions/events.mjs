@@ -6,7 +6,7 @@
 
 import { plPost } from './lib/pokerlens.mjs';
 import { config as appConfig } from './lib/config.mjs';
-import { toListEvent, buildCalendar } from './lib/adapter.mjs';
+import { toListEvent, buildCalendar, markMultiDay } from './lib/adapter.mjs';
 import { json, handle } from './lib/http.mjs';
 
 export const config = { path: '/api/events' };
@@ -49,7 +49,7 @@ export default async () =>
       if (rows.length < PAGE) break;
     }
 
-    const events = results.map((ev) => toListEvent(ev));
+    const events = markMultiDay(results.map((ev) => toListEvent(ev)));
     const calendar = buildCalendar(events);
     // CDN 耐久キャッシュ: 30秒は新鮮、以降10分は stale を返しつつ裏で更新(2人目以降は即時)
     return json({ events, calendar }, { cacheSeconds: 30, swrSeconds: 600 });
