@@ -1101,7 +1101,11 @@
       cdHtml +
       '</span>';
 
-    var noBadge = ev.number ? '<span class="card-no">No.' + esc(String(ev.number)) + '</span>' : '';
+    /* イベント No のバッジ。以前は "No.3" と出していたが、タイトル先頭の "#3" と
+     * 同じ意味の情報が 2 か所に出ていたので、バッジ側に寄せて "#3" 表記にした(#58)。
+     * 特殊イベントは "#SP2"、サテライトは "#S1"、フライトは "#3/A" のように出る
+     * (組み立ては adapter の eventNo())。番号を持たない大会ではバッジごと出さない。 */
+    var noBadge = ev.no ? '<span class="card-no">' + esc(ev.no) + '</span>' : '';
     var favBtn =
       '<span class="fav-btn' + (fav ? ' is-fav' : '') + '" role="button" tabindex="0" data-fav="' + esc(ev.id) + '" ' +
       'aria-label="Favorite" aria-pressed="' + fav + '" title="Add to favorites">' + (fav ? '★' : '☆') + '</span>';

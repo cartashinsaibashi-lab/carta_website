@@ -323,11 +323,21 @@ function makePayouts(rows) {
 
 // VenueEvent 本体
 function venueEvent(over) {
+  /* 実データでは **PokerLens 側が「# + No. + 大会名」を連結して name / fullname を返し**、
+   * dailyDetails.name には番号を含まない大会名が入る(2026-08-19 に本番で確認)。
+   *   name              "#2 白豚 ～HAKUTON～ …"
+   *   dailyDetails.name "白豚 ～HAKUTON～ …"
+   * カードのタイトルは後者、バッジは shortName / No. から作るので(#58)、
+   * mock でもこの形を再現しておかないと表示の分岐を確認できない。 */
+  const withNo = over.number ? '#' + over.number + ' ' + over.name : over.name;
   return {
     id: over.id,
-    name: over.name,
+    name: withNo,
     dailyDetails: {
       name: over.name,
+      fullname: withNo,
+      // 管理画面の Short descr.。特殊イベント(#SP2)やサテライト(#S1)はここに入る
+      shortName: over.shortName || '',
       startDate: over.startDate, // ローカル wall-clock 想定の ISO(例 2026-07-30T12:00:00)
       // 実データでは単日大会も親レコードも day=0 で、日別レコードだけ 1,2,3… が入る
       day: over.day || 0,
@@ -351,6 +361,7 @@ function venueEvent(over) {
       gameType: NLH,
       league: over.league,
       days: over.days || 1,
+      number: over.number || 0,   // 管理画面の No.(数値しか入らない)
       multiDay: !!over.multiDay,
       isFlight: !!over.isFlight,   // 日別レコード(Day 1A / Day 2 …)
       isSummary: !!over.isSummary, // 大会全体をまとめた親レコード
@@ -414,6 +425,7 @@ function buildEvents(now) {
   return [
   venueEvent({
     id: 'evt-wolf-main',
+    number: 1,   // shortName なし + No. あり → #1
     name: 'Wolf Main Event — Day 1A',
     league: LEAGUE_WOLF,
     statusCode: 'running',
@@ -471,6 +483,7 @@ function buildEvents(now) {
    * levelId 11 は LEVELS_STANDARD の Lv.8 と Lv.9 の間の休憩(15 分)。 */
   venueEvent({
     id: 'evt-utage-break',
+    number: 5,   // shortName なし + No. あり → #5
     name: 'Utage Night Series — Day 1',
     league: LEAGUE_UTAGE,
     statusCode: 'running',
@@ -498,6 +511,7 @@ function buildEvents(now) {
    * 「止まってから時間が経っても endsAt が過去にずれていかない」ことを見るため。 */
   venueEvent({
     id: 'evt-wolf-paused',
+    number: 6,   // #6
     name: 'Wolf Night Turbo (paused)',
     league: LEAGUE_WOLF,
     statusCode: 'opened',
@@ -519,6 +533,8 @@ function buildEvents(now) {
   }),
   venueEvent({
     id: 'evt-utage-deep',
+    number: 2,
+    shortName: '#SP2',   // 特殊イベント(現行書式)→ #SP2
     name: 'Utage Deepstack',
     league: LEAGUE_UTAGE,
     statusCode: 'opened',
@@ -536,6 +552,8 @@ function buildEvents(now) {
   }),
   venueEvent({
     id: 'evt-wolf-sat',
+    number: 4,
+    shortName: 'S',   // 旧書式(英字だけ)+ No. → #S4
     name: 'Wolf Satellite',
     league: LEAGUE_WOLF,
     statusCode: 'opened',
@@ -573,6 +591,7 @@ function buildEvents(now) {
    * カウントダウンが一度も出ていなかった。閾値を外した今も出ることを確認できるように残す。 */
   venueEvent({
     id: 'evt-wolf-series',
+    number: 7,   // #7
     name: 'Wolf Series Opener',
     league: LEAGUE_WOLF,
     statusCode: 'opened',
@@ -592,6 +611,8 @@ function buildEvents(now) {
    * 通過順位と噛み合わない」状態も再現してある。 */
   venueEvent({
     id: 'evt-wolf-day1a',
+    number: 3,
+    shortName: '#3/A',   // フライト付き → #3/A(そのまま出す)
     name: 'Wolf Championship — Day 1A',
     league: LEAGUE_WOLF,
     statusCode: 'closed',
@@ -620,6 +641,8 @@ function buildEvents(now) {
    * この状態を作っておかないと「親から取り直す」経路がローカルで確認できない(#54)。 */
   venueEvent({
     id: 'evt-wolf-final',
+    number: 3,
+    shortName: '#3',   // 最終日 → #3
     name: 'Wolf Championship — Final Day',
     league: LEAGUE_WOLF,
     statusCode: 'closed',

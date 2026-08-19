@@ -3,7 +3,8 @@
 //
 // app.js が読むイベント形状(要点):
 //   { id, category:'wolf'|'utage'|'other', status:'running'|'future'|'past',
-//     name, flight, tags[], year, month, day, dateLabel, venue,
+//     name(番号を含まない大会名), no(カードのバッジ "#12" / "#SP2"), flight, tags[],
+//     year, month, day, dateLabel, venue,
 //     buyin, fee, guarantee, startingStack, levelMinutes, lateReg, reentry,
 //     gameType, description, details[]?,
 //     structure[], stats{}, live{}?(running), registration{}?(future), results[]?(past),
@@ -98,6 +99,24 @@ function statusOf(ev) {
   // 開催予定のカード(STARTS IN のカウントダウン)に化けてしまう。
   if (pausedLive(ev)) return 'running';
   return 'future'; // opened / scheduled など
+}
+
+/* カードのイベント No バッジの表記(#58)。
+ *
+ * 管理画面の No. は数値しか入らないため、特殊イベントやサテライトは
+ * **Short descr.(= dailyDetails.shortName)に "#SP2" のような表記を入れる運用**になっている。
+ * 実データ 947 件では shortName の入力が 114 件あり、書式が時期によって揺れる:
+ *   "#3"(45) / "3"(28) / "SP"(14) / "#SP2"(9) / "#S1"(6) / "SP1"(3) / "S"(2) / "#3/A"(7)
+ * 2025-09〜2026-03 は英字だけ("SP")で番号が入っていないので、その場合は No. を足す。
+ * shortName が空でも番号があればタイトル先頭の "#3" と必ず一致する(553 件で確認済み)。
+ * 両方無い 280 件(FREE ROLL 等)はバッジを出さない。
+ *
+ * フライト付きの "#3/A" は運営の入力どおりそのまま出す(運営の指定)。 */
+function eventNo(ev) {
+  const short = String((ev.dailyDetails && ev.dailyDetails.shortName) || '').trim().replace(/^#+/, '').trim();
+  const no = num(ev.behaviour && ev.behaviour.number);
+  if (short) return '#' + (/\d/.test(short) ? short : short + (no || ''));
+  return no ? '#' + no : '';
 }
 
 function tagsOf(ev) {
@@ -370,8 +389,16 @@ function baseEvent(ev, levels) {
     id: ev.id,
     category: categoryOf(ev),
     status,
-    name: ev.name || dd.name || '',
+    /* 表示用の大会名。**dailyDetails.name は「番号とフライト表記を除いた大会名」**で、
+     * PokerLens が組み立てる ev.name(= "#2 白豚 ～HAKUTON～ …")や fullname とは別物。
+     * カードは番号をバッジ(下の no)で出すので、タイトルには番号の無いこちらを使う(#58)。
+     *   ev.name           "#3 (1A) MAIN EVENT DAY 1A"
+     *   dailyDetails.name "MAIN EVENT DAY 1A"        ← これ。末尾の DAY 1A は残るので
+     *                                                  同日の複数フライトも区別できる
+     * 写真の照合(lib/drive.mjs)は生の ev.name を使っているため、ここを変えても影響しない。 */
+    name: dd.name || ev.name || '',
     number: num(ev.behaviour && ev.behaviour.number), // イベント No(behaviour.number)
+    no: eventNo(ev), // カードのバッジ表記("#12" / "#SP2" / "#3/A")。無い大会は空
     flight: dd.flight || '',
     /* 日をまたぐ大会の「何日目か」(dailyDetails.day)。単日大会は 0。
      * 上の day(開催日の「日」)と紛らわしいので dayNo にしている。
