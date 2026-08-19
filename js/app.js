@@ -1375,6 +1375,13 @@
   var livePollTimer = null;
   var livePollId = null;
   var LIVE_POLL_MS = 25000;
+  /* 一時停止中だけポーリングを速める(#55)。
+   * 再開は「次の取得で status.code が Running に戻っていること」でしか分からないので、
+   * 通常の 25 秒 + CDN キャッシュ 10 秒だと復帰まで最大 35 秒かかり、会場が再開しても
+   * タイマーが止まったままに見える。停止中は取得を 10 秒間隔にし、あわせて BFF 側の
+   * キャッシュも 5 秒に縮めて(event.mjs)、最大 15 秒で復帰するようにしてある。
+   * 停止はカードを開いている間の一時的な状態なので、この間だけ倍の頻度でも負荷は増えない。 */
+  var LIVE_POLL_PAUSED_MS = 10000;
 
   function applyDetail(ev, d) {
     if (!d || d.error) return false;
@@ -1475,15 +1482,31 @@
     var ev = findEvent(id);
     if (!ev || ev.status !== 'running') return; // 進行中のみ
     livePollId = id;
-    livePollTimer = setInterval(function () {
-      if (document.hidden) return;                       // タブ非表示中はスキップ
+
+    /* setInterval ではなく毎回スケジュールし直す。一時停止/再開で間隔が変わるため、
+     * 次の 1 回を「今の状態」に合わせて決める必要がある。 */
+    var isPaused = function () {
+      var cur = findEvent(id);
+      return !!(cur && cur.live && cur.live.paused);
+    };
+    var tick = function () {
       if (state.openedId !== id) { stopLivePolling(); return; }
-      pollLiveOnce(id);
-    }, LIVE_POLL_MS);
+      /* タブ非表示中は取得しない(復帰時に間隔ぶん待つだけで、無駄な取得を増やさない)。
+       * 一時停止中は fresh(= HTTP キャッシュを迂回)で取る。停止中の応答は
+       * max-age=5 / stale-while-revalidate なので、素直に fetch すると
+       * ブラウザが古い応答をそのまま返したうえで裏で再検証しに行き、
+       * 「取得は 2 回走るのに画面は 1 周ぶん古い」状態になる。 */
+      if (!document.hidden) pollLiveOnce(id, { fresh: isPaused() });
+      schedule();
+    };
+    var schedule = function () {
+      livePollTimer = setTimeout(tick, isPaused() ? LIVE_POLL_PAUSED_MS : LIVE_POLL_MS);
+    };
+    schedule();
   }
 
   function stopLivePolling() {
-    if (livePollTimer) { clearInterval(livePollTimer); livePollTimer = null; }
+    if (livePollTimer) { clearTimeout(livePollTimer); livePollTimer = null; }
     livePollId = null;
     stopLevelEndRetry();
   }

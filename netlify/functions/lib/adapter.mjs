@@ -82,7 +82,7 @@ function categoryOf(ev) {
  * levels の先頭は必ず受付前の休憩(id=1)なので、**id が 2 以上か経過秒があれば開始済み**。
  * 実データ 2026-04 以降の Opened 29 件のうちこの条件に当たるのは一時停止中の 1 件だけで、
  * 過去の大会が誤って「開催中」に戻ることはない。 */
-function pausedLive(ev) {
+export function pausedLive(ev) {
   const st = ev.status || {};
   if (String(st.code || '').toLowerCase() !== 'opened') return false;
   const lvl = st.level || {};
