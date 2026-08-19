@@ -1081,6 +1081,30 @@
       );
     }).join('');
 
+    return (
+      '<article id="event-' + esc(ev.id) + '" class="' + cardClasses(ev, opened) + '" data-id="' + esc(ev.id) + '">' +
+      '  <button class="card-head" type="button" aria-expanded="' + opened + '">' + cardHeadInner(ev) + '</button>' +
+      '  <div class="card-body">' +
+      '    <div class="card-body-inner">' +
+      '      <nav class="detail-tabs">' + tabButtons + '</nav>' +
+      '      <div class="detail-panels">' + tabPanels + '</div>' +
+      '    </div>' +
+      '  </div>' +
+      '</article>'
+    );
+  }
+
+  /* カードの class。状態(st-*)は一覧の自動更新でも書き換わるため、
+   * 組み立てを 1 か所にまとめて refreshClosedCards() と共用する(#60)。 */
+  function cardClasses(ev, opened) {
+    return 'event-card st-' + esc(ev.status) + ' cat-' + esc(ev.category) +
+      (opened ? ' is-open' : '') + (ev.status === 'past' ? ' is-minimal' : '');
+  }
+
+  /* カード見出し(.card-head)の中身。
+   * 一覧の自動更新では、閉じているカードのここだけを差し替える(#60)。
+   * .card-head 要素自体は残すので、bindCards() が貼ったクリックリスナーは生きたままになる。 */
+  function cardHeadInner(ev) {
     var fav = isFav(ev.id);
     var sp = headStatus(ev);
     var dt = splitDateTime(ev.dateLabel);
@@ -1119,8 +1143,6 @@
     );
 
     return (
-      '<article id="event-' + esc(ev.id) + '" class="event-card st-' + esc(ev.status) + ' cat-' + esc(ev.category) + (opened ? ' is-open' : '') + (isPast ? ' is-minimal' : '') + '" data-id="' + esc(ev.id) + '">' +
-      '  <button class="card-head" type="button" aria-expanded="' + opened + '">' +
       '    <div class="card-headline">' +
       noBadge +
       '      <h2 class="card-title">' + esc(ev.name) + '</h2>' +
@@ -1133,15 +1155,7 @@
       '        <span class="card-expand-label"></span>' +
       '        <span class="card-chevron" aria-hidden="true">▾</span>' +
       '      </span>' +
-      '    </div>' +
-      '  </button>' +
-      '  <div class="card-body">' +
-      '    <div class="card-body-inner">' +
-      '      <nav class="detail-tabs">' + tabButtons + '</nav>' +
-      '      <div class="detail-panels">' + tabPanels + '</div>' +
-      '    </div>' +
-      '  </div>' +
-      '</article>'
+      '    </div>'
     );
   }
 
@@ -1223,6 +1237,132 @@
     syncOpenParam();
     prefetchVisibleDetails(); // 表示中カードの詳細をバックグラウンド先読み
   }
+
+  /* スクロール位置を保ったまま再描画する(#60)。
+   *
+   * render() は一覧を innerHTML で丸ごと作り直すため、閲覧中に呼ぶと画面が動く。
+   * 高さが変わると自動で位置がずれるので、**開いているカードの画面上の位置を基準**に
+   * 取り直す(開いていなければスクロール量をそのまま復元する)。
+   * ユーザー操作による再描画(カテゴリ切替・カードを開く)は従来どおり render() を直接呼ぶ。 */
+  function renderKeepingView() {
+    var openId = state.openedId;
+    var el = openId ? document.getElementById('event-' + openId) : null;
+    var beforeTop = el ? el.getBoundingClientRect().top : null;
+    var beforeY = window.pageYOffset;
+    render();
+    if (beforeTop != null) {
+      var after = document.getElementById('event-' + openId);
+      if (after) {
+        window.scrollTo(0, window.pageYOffset + (after.getBoundingClientRect().top - beforeTop));
+        return;
+      }
+    }
+    window.scrollTo(0, beforeY);
+  }
+
+  /* ---------- 一覧の自動更新(#60)----------
+   * 一覧は読み込み時の 1 回しか取得しておらず、開きっぱなしだとカードの状態が古いままだった。
+   * 60 秒ごとに取り直してマージする。**再描画は極力しない** — render() を呼ぶと
+   * スクロールが飛び、開いているカードの中身(座席表のスクロール位置など)も作り直されるため。
+   * 並びが変わらない限り、閉じているカードの見出しだけを差し替える。 */
+  var LIST_POLL_MS = 60000;
+  var listPollTimer = null;
+
+  /* 一覧の応答で上書きしてよい項目。**詳細でしか埋まらないものは触らない** —
+   * 一覧は structure / results / payouts を空で返すので、素直に代入すると
+   * カードを開いて読み込んだ内容が消える(_detail も 'loaded' のままなので再取得もされない)。 */
+  var LIST_MERGE_FIELDS = [
+    'category', 'status', 'name', 'no', 'number', 'flight', 'dayNo', 'isFlight', 'summaryId',
+    'tags', 'year', 'month', 'day', 'dateLabel', 'startAt', 'regCloseAt', 'regCloseTime',
+    'venue', 'buyin', 'fee', 'guarantee', 'startingStack', 'lateReg', 'reentry', 'gameType',
+    'description', 'stats', 'registration', 'carryOver'
+  ];
+
+  function mergeListEvent(ev, next, isOpen) {
+    LIST_MERGE_FIELDS.forEach(function (k) { if (k in next) ev[k] = next[k]; });
+    /* levelMinutes は一覧だと dailyDetails 由来で実データと食い違うことがある(#52)。
+     * 詳細(ストラクチャー Lv.1 由来)を取得済みなら、そちらを残す。 */
+    if (next.levelMinutes && ev._detail !== 'loaded') ev.levelMinutes = next.levelMinutes;
+    /* 開いているカードの live はライブポーリング(25 秒 / 停止中 10 秒)のほうが新しいので触らない。 */
+    if (!isOpen && next.live) ev.live = next.live;
+  }
+
+  function applyListUpdate(list) {
+    var beforeIds = visibleEvents().map(function (e) { return e.id; }).join(',');
+
+    var byId = {};
+    MOCK_EVENTS.forEach(function (e) { byId[e.id] = e; });
+    var merged = list.map(function (n) {
+      var cur = byId[n.id];
+      if (!cur) return n;                      // 新しく増えた大会
+      mergeListEvent(cur, n, cur.id === state.openedId);
+      return cur;                              // 既存の参照を保つ(詳細・写真を落とさない)
+    });
+    // 配列そのものを差し替えず中身を入れ替える(他所が MOCK_EVENTS を掴んでいるため)
+    MOCK_EVENTS.length = 0;
+    Array.prototype.push.apply(MOCK_EVENTS, merged);
+
+    updateCounts();
+    if (visibleEvents().map(function (e) { return e.id; }).join(',') !== beforeIds) {
+      renderKeepingView();   // カードが増減した / 並びが変わった場合だけ描き直す
+    } else {
+      refreshClosedCards();  // 通常はこちら。開いているカードには触れない
+    }
+  }
+
+  /* 閉じているカードの見出しだけを差し替える。
+   * .card-head 要素自体は残すので bindCards() のクリックリスナーは生きたまま。
+   * 開いているカードは対象外 — 中身を作り直すとタブ選択や座席表のスクロールが戻るため。 */
+  function refreshClosedCards() {
+    listEl.querySelectorAll('.event-card').forEach(function (card) {
+      var id = card.dataset.id;
+      if (!id || id === state.openedId) return;
+      var ev = findEvent(id);
+      if (!ev) return;
+      var cls = cardClasses(ev, false);
+      if (card.className !== cls) card.className = cls;
+      var head = card.querySelector('.card-head');
+      if (!head) return;
+      var html = cardHeadInner(ev);
+      if (head.innerHTML !== html) head.innerHTML = html;
+    });
+  }
+
+  /* 一覧を取り直す。失敗・0 件のときは今の表示を保つ(空にしない)。
+   * 一覧の応答は max-age=30 で、60 秒間隔だと必ず期限切れになる。素直に fetch すると
+   * 古い応答を返したうえで裏の再検証がもう 1 本走るので no-store で取る(#55 と同じ理由)。 */
+  function refreshList() {
+    if (window.__CARTA_DATA_SOURCE__ !== 'api') return Promise.resolve();
+    return fetch('/api/events', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && Array.isArray(d.events) && d.events.length) applyListUpdate(d.events);
+      })
+      .catch(function () {});
+  }
+
+  function startListPolling() {
+    if (listPollTimer || window.__CARTA_DATA_SOURCE__ !== 'api') return;
+    listPollTimer = setInterval(function () {
+      if (document.hidden) return;   // タブ非表示中は取りに行かない
+      refreshList();
+    }, LIST_POLL_MS);
+  }
+
+  /* タブに戻ってきたときは次の間隔を待たずに追いつく(#60)。
+   * 非表示の間はライブポーリングも一覧の更新も止まっているため、
+   * そのままだと最大 25 秒 / 60 秒古い画面を見せることになる。 */
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden || window.__CARTA_DATA_SOURCE__ !== 'api') return;
+    refreshList();
+    var id = state.openedId;
+    var ev = id ? findEvent(id) : null;
+    if (!ev || ev.status !== 'running') return;
+    /* 予約済みのポーリングを貼り直してから即時取得する。そうしないと、非表示中に
+     * 貼られたままだった次の tick が復帰直後に発火して同じ取得が 2 本続けて走る。 */
+    startLivePolling(id);
+    pollLiveOnce(id, { fresh: true });
+  });
 
   // 詳細の先読みは負荷抑制のため先頭 N 件に限定(全件は先読みしない)
   var PREFETCH_LIMIT = 12;
@@ -1462,7 +1602,8 @@
         var ev = findEvent(id);
         if (!ev || !applyDetail(ev, d)) return;
         if (state.openedId !== id) { stopLivePolling(); return; }
-        if (ev.status !== 'running') { stopLivePolling(); render(); return; } // 終了→全体再描画で状態反映
+        // 終了 → 全体再描画で状態反映。カードを開いたまま見ているのでスクロールを保つ(#60)
+        if (ev.status !== 'running') { stopLivePolling(); renderKeepingView(); return; }
         updateLivePanel(id);
       })
       .catch(function () {});
@@ -2201,7 +2342,8 @@
         if (ms <= 0) flip = true;
         el.textContent = fmtCountdown(ms);
       });
-      if (flip) render(); // フェーズ遷移(開始 / レジクロ到達)を反映
+      // フェーズ遷移(開始 / レジクロ到達)を反映。閲覧中に走るのでスクロールを保つ(#60)
+      if (flip) renderKeepingView();
     }, 1000);
   }
 
@@ -2357,6 +2499,7 @@
   renderDateStrip();
   render();
   ensureCountdownTicker();         // STARTS IN / REG CLOSE IN のカウントダウン開始
+  startListPolling();              // 一覧を 60 秒ごとに取り直す(#60)
   if (state.openedId) {
     // ?event=<id> で自動展開した場合も詳細(結果/ストラクチャー/ライブ)と写真を読み込み、完了後に反映
     var openId = state.openedId;
