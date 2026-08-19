@@ -46,7 +46,7 @@ export default async (_req, context) =>
      * これで「最終日かどうか」が決まり、通過日は Survivor タブ、最終日は Results タブになる(#54)。
      * 946 件中 70 件しか該当しないので、単日大会には往復が増えない。 */
     const isFlight = !!(ev.behaviour && ev.behaviour.isFlight);
-    const [levels, players, payouts, points, flights] = await Promise.all([
+    let [levels, players, payouts, points, flights] = await Promise.all([
       plGet(`/v1/event/${id}/levels`).catch(() => null),
       needPlayers ? plPost(`/v1/event/${id}/players`, {}).catch(() => null) : Promise.resolve(null),
       plGet(`/v1/event/${id}/payouts`).catch(() => null),
@@ -59,9 +59,22 @@ export default async (_req, context) =>
      * 親の id は flights の応答からしか引けない(summaryId は親の referenceId であって id ではなく、
      * GET /v1/event/{summaryId} は 404)。取れなければその日の結果のままフォールバックする。 */
     let summaryPlayers = null;
-    if (needPlayers && flights && isFinalDay(ev, flights)) {
+    if (flights && isFinalDay(ev, flights)) {
       const summaryId = summaryIdOf(flights);
-      if (summaryId) summaryPlayers = await plPost(`/v1/event/${summaryId}/players`, {}).catch(() => null);
+      if (summaryId) {
+        if (needPlayers) {
+          summaryPlayers = await plPost(`/v1/event/${summaryId}/players`, {}).catch(() => null);
+        }
+        /* ランキングポイントも親レコードから引く(#64)。
+         * **ポイントは日別レコードには紐づかず、親(isSummary)にだけ付く** — ランキングを
+         * 全件たどって確認した(#3 MAIN EVENT の親に 32 行、#2 BABY WOLF の親に 9 行)。
+         * そのため最終日のカードは自分の id では 0 件になり、Points 列が出ていなかった。
+         * 親の順位は「大会全体の最終成績」で、上の summaryPlayers と同じ並びなので順位が一致する。
+         * 索引(Blobs)を読むだけなので往復は増えない。日別側にポイントがあればそちらを優先する。 */
+        if (!points || !Object.keys(points).length) {
+          points = await pointsForEvent(summaryId).catch(() => null);
+        }
+      }
     }
 
     /* running は毎回鮮度が要るので短め、それ以外は長めにキャッシュ(stale-while-revalidate 付き)。

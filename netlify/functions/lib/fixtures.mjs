@@ -770,14 +770,26 @@ const RANKING_ID = 'rk-wolf-2026-02';
 const POINTS_EVENT_ID = 'evt-weekly-bounty';
 const POINTS_REF_ID = 'mockref-8b21';
 
+/* 日をまたぐ大会のポイントは**親(サマリー)レコードに紐づく**(#64)。
+ * 実データでは #3 MAIN EVENT の親に 32 行、#2 BABY WOLF の親に 9 行が付いており、
+ * Day 1A や最終日の日別レコードには 1 行も無い。最終日のカードが親からポイントを
+ * 引けているかをローカルで確認できるよう、mock でも親にだけ付けておく。 */
+const SUMMARY_POINTS_REF_ID = 'mockref-champ';
+
 // 順位 → ポイント。実データに合わせて小数を混ぜてある(46.8 / 83.2 など)。
 const MOCK_POINTS = [
   [1, 260], [2, 182], [3, 130], [4, 104], [5, 83.2],
   [6, 67.6], [7, 57.2], [8, 46.8], [9, 39],
 ];
 
-function rankingPoints() {
-  return MOCK_POINTS.map(([position, points]) => ({
+// 親レコード用。最終日の Results は 18 位まで並ぶので、そこまでポイントを振る。
+const MOCK_SUMMARY_POINTS = MOCK_POINTS.concat([
+  [10, 33.8], [11, 29.9], [12, 26], [13, 23.4], [14, 20.8],
+  [15, 18.2], [16, 15.6], [17, 13], [18, 10.4],
+]);
+
+function rankingRow(position, points, refId, description) {
+  return {
     date: '2026-05-28T13:00:00',
     player: null, // includePlayerInfo=false のときの実 API の形に合わせる
     points,
@@ -787,8 +799,14 @@ function rankingPoints() {
     totalPayoutAmount: 0,
     position,
     entries: 82,
-    reference: { id: POINTS_REF_ID, description: 'Sunday Bounty', type: 'event' },
-  }));
+    reference: { id: refId, description, type: 'event' },
+  };
+}
+
+function rankingPoints() {
+  return MOCK_POINTS.map(([position, points]) => rankingRow(position, points, POINTS_REF_ID, 'Sunday Bounty'))
+    .concat(MOCK_SUMMARY_POINTS.map(([position, points]) =>
+      rankingRow(position, points, SUMMARY_POINTS_REF_ID, 'Wolf Championship')));
 }
 
 // mock ルータ: 実 API と同じ path で呼ばれる想定。
@@ -849,6 +867,10 @@ export function mockRequest(method, path, body) {
   }
   if (method === 'GET' && path === `/v1/ranking/${RANKING_ID}/event-by-reference/${POINTS_REF_ID}`) {
     return { id: POINTS_EVENT_ID };
+  }
+  // 日をまたぐ大会のポイントは親(サマリー)レコードに変換される(#64)
+  if (method === 'GET' && path === `/v1/ranking/${RANKING_ID}/event-by-reference/${SUMMARY_POINTS_REF_ID}`) {
+    return { id: CHAMP_SUMMARY_ID };
   }
 
   const m = path.match(/^\/v1\/event\/([^/]+)(?:\/([^/]+))?$/);
