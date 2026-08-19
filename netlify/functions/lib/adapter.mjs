@@ -156,6 +156,13 @@ function buildStats(ev) {
   const s = ev.stats || {};
   return {
     entries: num(s.totalEntries),
+    /* 日をまたぐ大会の「その日に参加した人数」と「大会全体のエントリー数」。
+     * 実データ(#3 MAIN EVENT / 2026-05-27〜31)では、Day 1A〜1D は totalEntries が
+     * その日の数(66/79/116/69)なのに対し、Day 2 以降は大会全体の 330 に変わる。
+     * totalEntriesGlobal はどの日のレコードでも 330 で一貫しているので、
+     * 「その日 / 全体」を出すときはこの 2 つを使う(#54)。単日大会は両方同じ値。 */
+    entriesDay: num(s.totalEntriesDay),
+    entriesTotal: num(s.totalEntriesGlobal) || num(s.totalEntries),
     players: num(s.totalPlayers),
     avgStack: num(s.averageChipsCount),
     totalChips: num(s.totalChipsCount),
@@ -315,6 +322,11 @@ export function buildResults(players) {
          * 最終日(#2 (2) BABY WOLF DAY 2 FINAL)は全員 busted=true で chipsCount は 0。
          * この差を carryOver の判定に使う(toDetailEvent)。 */
         chips: num(p.chipsCount),
+        /* まだ生き残っているか。通過日の Survivor タブは **busted で絞る**(#54)。
+         * 実データ 70 レコード中 69 件は chipsCount>0 と一致するが、
+         * 2026-04-24 #1 MAIN EVENT DAY 1B だけ busted=false が 5 名・chips>0 が 6 名で
+         * 食い違う(stats.totalPlayers は 5)。API の生存者定義に合わせる。 */
+        busted: !!p.busted,
       };
     })
     .filter((r) => r.pos > 0)
@@ -361,6 +373,14 @@ function baseEvent(ev, levels) {
     name: ev.name || dd.name || '',
     number: num(ev.behaviour && ev.behaviour.number), // イベント No(behaviour.number)
     flight: dd.flight || '',
+    /* 日をまたぐ大会の「何日目か」(dailyDetails.day)。単日大会は 0。
+     * 上の day(開催日の「日」)と紛らわしいので dayNo にしている。
+     * summaryId は同じ大会の全日程が共有する親レコードのキーで、946 件中 70 件
+     * (= behaviour.isFlight が true の日別レコード)にだけ入る。これでグループ化し、
+     * dailyDetails.day の最大値が最終日になる(#54)。 */
+    dayNo: num(dd.day),
+    isFlight: !!(ev.behaviour && ev.behaviour.isFlight),
+    summaryId: ev.summaryId || null,
     tags: tagsOf(ev),
     year: parts ? parts.year : 0,
     month: parts ? parts.month : 0,
@@ -422,7 +442,7 @@ export function buildSeats(players) {
 }
 
 // 詳細用(アコーディオン内の structure / results / live / seats をフルに埋める)
-export function toDetailEvent(ev, { levels, players, payouts, points } = {}) {
+export function toDetailEvent(ev, { levels, players, payouts, points, flights, summaryPlayers } = {}) {
   const base = baseEvent(ev, levels);
   const lateRegLevel = base._lateRegLevel;
   delete base._lateRegLevel;
@@ -441,21 +461,80 @@ export function toDetailEvent(ev, { levels, players, payouts, points } = {}) {
   }
   if (base.status === 'future') out.registration = buildRegistration(ev);
   if (base.status === 'past') {
-    out.results = buildResults(players);
-    /* 「通過日」= 日をまたぐ大会の最終日以外。チップを持って残っている人が居るかで判定する。
+    /* 「通過日」= 日をまたぐ大会の最終日以外。
      *
-     * behaviour.multiDay や dailyDetails.day / flight でも 2 日制なら判別できるが
-     * (実データ: Day1 は day=1 / flight="A"、最終日は day=2 / flight 空)、
-     * 3 日制の中日を取りこぼす。「翌日へ持ち越すチップがある」という事実そのもので
-     * 見るほうが確実で、日数構成に依存しない。
+     * 判定は flights(= 同じ大会の全日程)の dailyDetails.day の最大値と比べる(#54)。
+     * 以前は「チップを持って残っている人が居るか」で見ていたが(#44)、それだと
+     * **まだ結果が入っていない大会を判別できない**(未開催のグループは全員 0)。
+     * flights が取れなかったときのフォールバックとして、その判定も残してある。
      *
      * 通過日は Results の Prize が実態と合わない。実データでは Day 1A のレコードに
      * **最終日(5/31)の賞金**が紐づいており、Day 1A の順位(通過スタック順)と
-     * 噛み合わずちぐはぐな表示になっていた(#44)。そのため通過日は Prize ではなく
-     * チップを出し、Prize タブも隠す(フロント側で分岐)。 */
-    out.carryOver = out.results.some((r) => r.chips > 0);
+     * 噛み合わずちぐはぐな表示になっていた(#44)。そのため通過日は賞金ではなく
+     * 翌日へ持ち込むチップを出し(Survivor タブ)、Prize タブも隠す(フロント側で分岐)。 */
+    const dayResults = buildResults(players);
+    const maxDay = maxDayOf(flights);
+    out.carryOver = base.isFlight && maxDay > 0
+      ? base.dayNo < maxDay
+      : dayResults.some((r) => r.chips > 0);
+
+    /* 最終日は「入賞者全員」を出したいが、**最終日のレコードにはその日に来た人しか居ない**。
+     * 実データ(#3 (3) MAIN EVENT DAY 3 FINAL / 2026-05-31)では入賞 32 名に対して
+     * 結果一覧が 9 名(ファイナルテーブル)だけだった。親(サマリー)レコードは
+     * 順位 1〜200・賞金付き 32 名で、順位も最終成績として正しいので、取得できていれば
+     * そちらを使う。Day 2 のレコードにも 32 名は揃っているが、順位が Day 2 終了時の
+     * スタック順(1 位 ¥300,000 / 7 位 ¥1,600,000)で最終成績と噛み合わないため使わない。 */
+    out.results = !out.carryOver && summaryPlayers ? buildResults(summaryPlayers) : dayResults;
   }
   return out;
+}
+
+/* 一覧に出そろった日別レコードから「通過日か」を決めて carryOver を立てる(#54)。
+ *
+ * 詳細(/api/events/:id)は flights を取って正確に判定できるが、それはカードを開いてから。
+ * タブ名(Survivor / Results)は開く前から出るので、一覧の時点でも決めておかないと
+ * 詳細が届いた瞬間にタブ名が入れ替わって見える。
+ *
+ * summaryId が同じものを 1 つの大会とみなし、dailyDetails.day の最大値より小さい日を通過日とする。
+ * 取得期間(historyDays)の切れ目で最終日が一覧に入っていないと最大値がずれるが、
+ * その場合もカードを開いた時点で flights 由来の値に上書きされる。 */
+export function markMultiDay(events) {
+  const maxByGroup = new Map();
+  for (const e of events) {
+    if (!e.summaryId) continue;
+    maxByGroup.set(e.summaryId, Math.max(maxByGroup.get(e.summaryId) || 0, e.dayNo));
+  }
+  for (const e of events) {
+    if (!e.summaryId) continue;
+    const max = maxByGroup.get(e.summaryId) || 0;
+    e.carryOver = max > 0 && e.dayNo < max;
+  }
+  return events;
+}
+
+/* flights(GET /v1/event/{id}/flights)の中で最も大きい dailyDetails.day。
+ * 応答には親(day=0 / isSummary)も混ざるので、そのまま最大値を取ればよい。
+ * 単日大会では応答が null なので 0 を返す。 */
+function maxDayOf(flights) {
+  const arr = Array.isArray(flights) ? flights : (flights && flights.results) || [];
+  return arr.reduce((m, f) => Math.max(m, num(f.dailyDetails && f.dailyDetails.day)), 0);
+}
+
+/* flights から親(サマリー)レコードの id を取り出す。
+ * 子が持つ summaryId は親の referenceId であって **id ではない**ため、
+ * GET /v1/event/{summaryId} は 404 になる。親の id を知る唯一の経路がこの応答。 */
+export function summaryIdOf(flights) {
+  const arr = Array.isArray(flights) ? flights : (flights && flights.results) || [];
+  const parent = arr.find((f) => f.behaviour && f.behaviour.isSummary);
+  return parent ? parent.id : null;
+}
+
+/* この日が最終日か(= 入賞者を親レコードから取り直す必要があるか)。
+ * event.mjs が「親の players を取りに行くか」を決めるのに使う。 */
+export function isFinalDay(ev, flights) {
+  if (!(ev.behaviour && ev.behaviour.isFlight)) return false; // 単日大会
+  const maxDay = maxDayOf(flights);
+  return maxDay > 0 && num(ev.dailyDetails && ev.dailyDetails.day) >= maxDay;
 }
 
 // CALENDAR({ months:[{year,month}], today:{year,month,day} })を組み立てる

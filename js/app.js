@@ -129,7 +129,13 @@
   function tabsFor(ev) {
     var tabs = [];
     if (ev.status === 'running') tabs.push({ key: 'live', label: 'Live' });
-    if (ev.status === 'past') tabs.push({ key: 'results', label: 'Results' });
+    /* 通過日(日をまたぐ大会の最終日以外)はその日の成績が確定しないので、
+     * タブ名を Survivor にして「翌日に進む人の一覧」であることを示す(#54)。
+     * key は 'results' のまま — 再描画をまたいで選択タブを覚える state.openedTab や
+     * 既存のパネル分岐がこのキーを使っており、変えると開き直しでタブが Info に戻る。 */
+    if (ev.status === 'past') {
+      tabs.push({ key: 'results', label: ev.carryOver ? 'Survivor' : 'Results' });
+    }
     tabs.push({ key: 'info', label: 'Info' });
     /* 通過日(日をまたぐ大会の最終日以外)は Prize タブを出さない。
      * この日のレコードに紐づくペイアウトは大会全体のもので、その日の成績ではないため
@@ -196,6 +202,22 @@
     return bb > 0 ? chips + ' (' + num(Math.round(ev.startingStack / bb)) + 'BB)' : chips;
   }
 
+  /* Info タブの Entries 表記。
+   *
+   * 日をまたぐ大会は 2 日目以降を「その日の参加者 / 大会全体の参加者」で出す(#54)。
+   * 実データ(#3 MAIN EVENT / 2026-05-27〜31)では Day 2 が 59 / 330、Day 3 が 9 / 330。
+   * Day 1 の各フライトと単日大会は大会全体の数だけを出す(Day 1A なら自分の 66 ではなく
+   * 大会全体の 330 — 運営の指定)。
+   *
+   * 分母は stats.entriesTotal(= totalEntriesGlobal)。Day 1 のレコードでは
+   * stats.entries が自フライトの数(66)になるため、そちらは使わない。 */
+  function entriesText(ev) {
+    var st = ev.stats || {};
+    var total = st.entriesTotal || st.entries || 0;
+    if (ev.dayNo >= 2 && st.entriesDay) return num(st.entriesDay) + ' / ' + num(total);
+    return num(total);
+  }
+
   function infoPanel(ev) {
     var rows = [
       ['Date & Time', ev.dateLabel + ' Start'],
@@ -217,7 +239,7 @@
     } else if (ev.status === 'future' && ev.registration) {
       rows.push(['Entries', num(ev.registration.entries) + (ev.registration.cap ? ' / ' + num(ev.registration.cap) : '')]);
     } else {
-      rows.push(['Entries', num(ev.stats.entries)]);
+      rows.push(['Entries', entriesText(ev)]);
     }
     if (ev.status === 'past') rows.push(['Prize Pool', yen(ev.stats.prizePool)]);
     var dl = rows.map(function (r) {
@@ -301,7 +323,11 @@
    * 通過者は全員が「翌日の参加者」なので、9 位などで切ると誰が残っているのか
    * 分からなくなるため。実データでは 12 名程度。 */
   function carryOverTable(ev) {
-    var body = ev.results.filter(function (r) { return r.chips > 0; }).map(function (r) {
+    /* 翌日に参加する人 = まだバストしていない人。以前は chips > 0 で絞っていたが、
+     * 実データ 70 レコード中 1 件(2026-04-24 #1 MAIN EVENT DAY 1B)だけ
+     * busted=true なのにチップが残っている人が居て 1 名多く出ていた。
+     * API の生存者定義(stats.totalPlayers)と揃うのは busted のほう(#54)。 */
+    var body = ev.results.filter(function (r) { return !r.busted; }).map(function (r) {
       var posCls = r.pos === 1 ? ' class="row-winner"' : '';
       var medalCls = r.pos <= 3 ? ' pos-' + r.pos : '';
       return (

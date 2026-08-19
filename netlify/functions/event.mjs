@@ -4,7 +4,10 @@
 // フロントはカード展開時に /api/events/:id を取得し、一覧のイベントにマージする。
 
 import { plGet, plPost } from './lib/pokerlens.mjs';
-import { toDetailEvent, buildStructure, buildResults, buildPayouts, pausedLive } from './lib/adapter.mjs';
+import {
+  toDetailEvent, buildStructure, buildResults, buildPayouts,
+  isFinalDay, summaryIdOf, pausedLive,
+} from './lib/adapter.mjs';
 import { pointsForEvent } from './lib/ranking.mjs';
 import { json, handle } from './lib/http.mjs';
 
@@ -38,12 +41,28 @@ export default async (_req, context) =>
     // ランキングポイントは Prize / Results の両タブで使うため、ここで一緒に載せて往復を減らす
     // (対象外の大会では null が返り、フロントはポイント列を出さない)。
     const needPlayers = code === 'closed' || code === 'running';
-    const [levels, players, payouts, points] = await Promise.all([
+
+    /* 日をまたぐ大会の日別レコード(behaviour.isFlight)だけ、同じ大会の全日程を取りに行く。
+     * これで「最終日かどうか」が決まり、通過日は Survivor タブ、最終日は Results タブになる(#54)。
+     * 946 件中 70 件しか該当しないので、単日大会には往復が増えない。 */
+    const isFlight = !!(ev.behaviour && ev.behaviour.isFlight);
+    const [levels, players, payouts, points, flights] = await Promise.all([
       plGet(`/v1/event/${id}/levels`).catch(() => null),
       needPlayers ? plPost(`/v1/event/${id}/players`, {}).catch(() => null) : Promise.resolve(null),
       plGet(`/v1/event/${id}/payouts`).catch(() => null),
       pointsForEvent(id).catch(() => null),
+      isFlight ? plGet(`/v1/event/${id}/flights`).catch(() => null) : Promise.resolve(null),
     ]);
+
+    /* 最終日は入賞者を親(サマリー)レコードから取り直す。最終日のレコードには
+     * その日に来た人しか居らず(実データで入賞 32 名に対し結果 9 名)、入賞者を全員出せない。
+     * 親の id は flights の応答からしか引けない(summaryId は親の referenceId であって id ではなく、
+     * GET /v1/event/{summaryId} は 404)。取れなければその日の結果のままフォールバックする。 */
+    let summaryPlayers = null;
+    if (needPlayers && flights && isFinalDay(ev, flights)) {
+      const summaryId = summaryIdOf(flights);
+      if (summaryId) summaryPlayers = await plPost(`/v1/event/${summaryId}/players`, {}).catch(() => null);
+    }
 
     /* running は毎回鮮度が要るので短め、それ以外は長めにキャッシュ(stale-while-revalidate 付き)。
      * 一時停止中はさらに短くする — 再開は次の取得で status.code が Running に戻ることでしか
@@ -51,7 +70,7 @@ export default async (_req, context) =>
      * 停止中はフロント側も 10 秒間隔に上げるので、合わせて最大 15 秒で復帰する(#55)。
      * 一時停止は status.code が Opened に戻る(= adapter の pausedLive)。 */
     const cacheSeconds = code === 'running' ? 10 : pausedLive(ev) ? 5 : 120;
-    return json(toDetailEvent(ev, { levels, players, payouts, points }), {
+    return json(toDetailEvent(ev, { levels, players, payouts, points, flights, summaryPlayers }), {
       cacheSeconds,
       swrSeconds: cacheSeconds * 10,
     });
