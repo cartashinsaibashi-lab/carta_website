@@ -924,20 +924,73 @@ function mockFolderLabel(name) {
   return name.replace(/—/g, '-').replace(/ /g, '　');
 }
 
-/* 親フォルダ直下のフォルダ一覧。
+/* mock の種別フォルダ。名前は config.mjs の photoFolder* の既定値と揃えてある
+ * (fixtures は依存を持たない方針なので参照はせず、値を書いてある。片方を変えたら
+ * もう片方も直す — ずれると mock で種別が付かなくなる)。 */
+const MOCK_CATEGORY_FOLDERS = [
+  { id: 'mockfolder-cat-wolf', name: 'WOLF', category: 'wolf' },
+  { id: 'mockfolder-cat-utage', name: '宴', category: 'utage' },
+  { id: 'mockfolder-cat-other', name: '歌留多', category: 'other' },
+];
+
+/* mock イベント → 種別。adapter の categoryOf() と同じ判定を league 名に対してかける
+ * (fixtures からは adapter を参照しないので、同じ既定値をここに持つ)。 */
+function mockCategoryOf(ev) {
+  const name = ((ev.behaviour && ev.behaviour.league && ev.behaviour.league.name) || '').toLowerCase();
+  if (name.includes('wolf') || name.includes('ウルフ')) return 'wolf';
+  if (name.includes('utage') || name.includes('宴')) return 'utage';
+  return 'other';
+}
+
+/* 種別フォルダへ移動し忘れた大会を 1 件だけ作る(#72)。
+ * 親フォルダ直下に残った大会フォルダは**読まない**(種別が決まらないため)。
+ * 「写真が出ないまま気付かれない」ことを防ぐ misplaced の警告経路を、
+ * ローカルでも通せるようにするために 1 件だけ置いてある。
+ * この大会は mock では Photos タブが出ない — それが正しい挙動。 */
+const MOCK_MISPLACED_EVENT_ID = 'evt-wolf-final';
+
+/* フォルダ一覧。parentId が種別フォルダなら大会フォルダを、それ以外(= 親フォルダ)なら
+ * 種別フォルダ + 移動し忘れた大会フォルダを返す。
+ *
  * **開催予定の大会にもフォルダを作る**。告知画像を先に載せる運用があるため、
  * フロントは状態で絞らず写真を取りに行くようになった(#48)。以前は
  * `status.code !== 'opened'` で除外していて、開催予定の経路をローカルで確認できなかった。
  * ただし evt-wolf-sat だけは意図的にフォルダを作らない —「写真 0 枚 → Photos タブが
  * 出ない」ケースの確認用に 1 件残しておく必要があるため。 */
-export function mockDriveFolders() {
-  const folders = buildEvents(Date.now())
-    .filter((e) => e.id !== 'evt-wolf-sat')
-    .map((e) => ({
-      id: 'mockfolder-' + e.id,
-      name: `${e.dailyDetails.startDate.slice(0, 10)} ${mockFolderLabel(e.name)}`,
-      mimeType: 'application/vnd.google-apps.folder',
-    }));
+export function mockDriveFolders(parentId) {
+  const eventFolder = (e) => ({
+    id: 'mockfolder-' + e.id,
+    name: `${e.dailyDetails.startDate.slice(0, 10)} ${mockFolderLabel(e.name)}`,
+    mimeType: 'application/vnd.google-apps.folder',
+  });
+
+  const events = buildEvents(Date.now()).filter(
+    (e) => e.id !== 'evt-wolf-sat' && e.id !== MOCK_MISPLACED_EVENT_ID
+  );
+
+  const cat = MOCK_CATEGORY_FOLDERS.find((c) => c.id === parentId);
+  if (cat) {
+    const folders = events.filter((e) => mockCategoryOf(e) === cat.category).map(eventFolder);
+    // Player's Guide の置き場。写真ではないので大会フォルダから外れることの確認用。
+    // その他(歌留多)には Guide を置かない運用なので mock も揃える。
+    if (cat.category !== 'other') {
+      folders.push({
+        id: 'mockfolder-guide-' + cat.category,
+        name: 'Play Guide',
+        mimeType: 'application/vnd.google-apps.folder',
+      });
+    }
+    return folders;
+  }
+
+  // 親フォルダ直下
+  const folders = MOCK_CATEGORY_FOLDERS.map((c) => ({
+    id: c.id,
+    name: c.name,
+    mimeType: 'application/vnd.google-apps.folder',
+  }));
+  const misplaced = buildEvents(Date.now()).find((e) => e.id === MOCK_MISPLACED_EVENT_ID);
+  if (misplaced) folders.push(eventFolder(misplaced));
   // 命名規約(先頭に YYYY-MM-DD)を満たさないフォルダ。
   // photos.mjs が警告ログを出す経路をローカルでも通せるように 1 つ混ぜてある。
   folders.push({

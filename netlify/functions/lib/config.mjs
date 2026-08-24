@@ -47,8 +47,26 @@ export const config = {
   // 写真は Drive の「リンクを知っている全員が閲覧可」な親フォルダから読む。
   // 認証は API キーのみで、公開されたファイルしか読めない。
   googleApiKey: process.env.GOOGLE_API_KEY || '',
-  // 親フォルダの ID(URL の /folders/ の後ろ)。直下に「YYYY-MM-DD 大会名」のフォルダが並ぶ。
+  // 親フォルダの ID(URL の /folders/ の後ろ)。直下に種別フォルダが並ぶ(下記)。
   photoFolderId: process.env.PHOTO_DRIVE_FOLDER_ID || '',
+
+  /* 親フォルダ直下に置く種別フォルダの名前(#72)。この 1 段で大会写真の種別が決まる。
+   *   親フォルダ / WOLF|宴|歌留多 / YYYY-MM-DD 大会名 / 写真
+   * 上の categoryWolf / categoryUtage とは別物 — あちらは PokerLens のリーグ名、
+   * こちらは Drive のフォルダ名で、運営が手で作る。名前を変えたときに写真が消えないよう、
+   * カンマ区切りで別名を足せるようにしてある。照合は normalizeTitle() を通した完全一致
+   * (部分一致にすると「WOLF」が大会フォルダ名にも当たってしまう)。 */
+  photoFolderWolf: csv(process.env.PHOTO_FOLDER_WOLF || 'WOLF,ウルフ'),
+  photoFolderUtage: csv(process.env.PHOTO_FOLDER_UTAGE || '宴,UTAGE'),
+  photoFolderOther: csv(process.env.PHOTO_FOLDER_OTHER || '歌留多,カルタ,CARTA,OTHER'),
+
+  /* 種別フォルダの直下に置く Player's Guide(PDF)のフォルダ名。
+   * ここでフォルダ名を持っておくのは、大会フォルダの命名ミス警告から除外するため
+   * (「YYYY-MM-DD で始まっていない」と毎回警告に出てしまう)。
+   * PDF を実際に読むのは別 issue。
+   * 実際に運営が作ったフォルダは**スペース無しの「PlayGuide」**(2026-08-24 に確認)。
+   * normalizeTitle() が空白を全部落とすのでこの綴りでも一致する。 */
+  photoGuideFolder: csv(process.env.PHOTO_GUIDE_FOLDER || "Play Guide,Player's Guide"),
 };
 
 // 写真機能が使えるか。live では両方の環境変数が要る。
