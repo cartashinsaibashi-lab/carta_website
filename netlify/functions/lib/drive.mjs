@@ -2,12 +2,21 @@
 //
 // Drive 側の運用(顧客と合意済み):
 //   親フォルダ … 「リンクを知っている全員が閲覧可」で共有。ID は PHOTO_DRIVE_FOLDER_ID
-//     └ 「YYYY-MM-DD 大会名」のサブフォルダ … 大会 1 つにつき 1 フォルダ
-//          └ 写真ファイル
+//     ├ 「WOLF」/「宴」/「歌留多」… 種別フォルダ。**この 1 段で大会写真の種別が決まる**
+//     │    ├ 「Play Guide」… Player's Guide の PDF(写真ではないのでここでは無視する)
+//     │    └ 「YYYY-MM-DD 大会名」… 大会 1 つにつき 1 フォルダ
+//     │         └ 写真ファイル
+//     └ 「YYYY-MM-DD 大会名」… 種別フォルダを作る前の旧構成。移行中だけ存在する
 //
 // 共有してもらうのは親フォルダだけで、大会ごとのフォルダは名前から自動照合する。
 // こうすると運営は「フォルダを作って写真を入れる」だけでよく、
 // 大会 ID とアルバム URL を対応づける台帳(スプレッドシート)の運用が要らない。
+//
+// **旧構成(親フォルダ直下に大会フォルダ)も読み続ける(#72)。**
+// 種別フォルダは運営が手で作って既存フォルダを移動する。移動とデプロイを同時刻に
+// 合わせるのは無理なので、両方を読めるようにしておく。旧位置のフォルダは種別不明
+// (category: null)として扱い、大会との照合ではフォールバックとして使う。
+// 移行が済んで種別不明が 0 件になったら旧構成の読み取りを外す。
 //
 // フォルダ名に開催日を入れてもらうのは必須。実データで、過去 921 大会のうち
 // ユニークな大会名は 274 種類しかなく(FREEROLL が 147 件、#2 DEEP STACK が 141 件)、
@@ -17,10 +26,10 @@
 // 万一キーが漏れても非公開のドライブには届かない。
 //
 // 入出力:
-//   listFolders(parentId)          → [{ id, name, date, title, key }]
-//   listImages(folderId)           → [{ id, name, w, h, takenAt }]
-//   matchFolder(folders, evKey)    → 一致したフォルダ(+ match 種別)| null
-//   eventFolderKey(venueEvent)     → { date, name } (照合に使う大会側のキー)
+//   listFolderTree(parentId)              → { events, categories, unnamed }
+//   listImages(folderId)                  → [{ id, name, w, h, takenAt }]
+//   matchFolder(events, evKey, category)  → 一致したフォルダ(+ match 種別)| null
+//   eventFolderKey(venueEvent)            → { date, name } (照合に使う大会側のキー)
 
 import { config } from './config.mjs';
 import { mockDriveFolders, mockDriveImages, mockPhotoSrc } from './fixtures.mjs';
@@ -148,14 +157,13 @@ export function eventFolderKey(ev) {
   return { date: iso.slice(0, 10), name: (ev && ev.name) || dd.name || '' };
 }
 
-/* 大会 → フォルダの照合。
+/* 開催日 + 名前でフォルダを 1 つ選ぶ。
  *   1) 開催日 + 正規化した大会名の完全一致
  *   2) 同じ開催日で、どちらかの名前がもう一方を含む(運営が大会名を一部だけ書いた場合)。
  *      候補が 1 つに絞れるときだけ採用する
  * 同日・同名の大会は実データで 4 件だけ存在する(昼の部・夜の部と思われる)。
  * その 4 件は区別できないので、両方に同じフォルダを出す(先頭を使う)。 */
-export function matchFolder(folders, key) {
-  if (!key.date || !key.name) return null;
+function pickFolder(folders, key) {
   const want = normalizeTitle(key.name);
 
   const exact = folders.filter((f) => f.date === key.date && f.norm === want);
@@ -172,22 +180,96 @@ export function matchFolder(folders, key) {
   return partial.length === 1 ? { ...partial[0], match: 'partial' } : null;
 }
 
+/* 大会 → フォルダの照合。
+ *
+ * **同じ種別のフォルダを先に探し、無ければ種別不明(旧構成)から探す**(#72)。
+ * 移行中は同じ大会のフォルダが新旧どちらの位置にもあり得るので、新しい位置を優先する。
+ * category を渡さないときは全部から探す(種別が決まらない呼び出し向け)。
+ * 種別で先に絞ることで、別シリーズの同日同名フォルダを掴む事故も防げる。 */
+export function matchFolder(folders, key, category) {
+  if (!key.date || !key.name) return null;
+  if (!category) return pickFolder(folders, key);
+  return (
+    pickFolder(folders.filter((f) => f.category === category), key) ||
+    pickFolder(folders.filter((f) => !f.category), key)
+  );
+}
+
 // --- 取得 -----------------------------------------------------------------
 
-/* 親フォルダ直下のサブフォルダ一覧。日付を読めなかったものは date=null で返し、
- * 呼び出し側が命名ミスとしてログに出せるようにする(黙って捨てない)。 */
-export async function listFolders(parentId) {
-  const raw = config.isMock ? mockDriveFolders() : await fetchFolders(parentId);
-  return raw.map((f) => {
+/* フォルダ名 → 種別。normalizeTitle() を通した**完全一致**で判定する。
+ * 部分一致にすると「WOLF」が大会フォルダ名(例: 2026-08-23 WOLF MAIN EVENT)にも
+ * 当たってしまい、大会フォルダを種別フォルダと誤認する。 */
+function folderCategory(name) {
+  const n = normalizeTitle(name);
+  const hit = (list) => list.some((k) => normalizeTitle(k) === n);
+  if (hit(config.photoFolderWolf)) return 'wolf';
+  if (hit(config.photoFolderUtage)) return 'utage';
+  if (hit(config.photoFolderOther)) return 'other';
+  return null;
+}
+
+// Player's Guide の PDF を入れるフォルダか。大会フォルダではないので写真の対象から外す。
+function isGuideFolder(name) {
+  const n = normalizeTitle(name);
+  return config.photoGuideFolder.some((k) => normalizeTitle(k) === n);
+}
+
+function toEventFolder(f, parsed, category) {
+  return {
+    id: f.id,
+    name: f.name,
+    date: parsed.date,
+    title: parsed.title,
+    norm: parsed.norm,
+    category, // null = 旧構成(親フォルダ直下)で種別が決まらないもの
+  };
+}
+
+/* 親フォルダ配下のフォルダを、種別フォルダ 1 段を降りて集める(#72)。
+ *
+ * 返り値:
+ *   events     … 大会フォルダ [{ id, name, date, title, norm, category }]
+ *                 category は 'wolf'|'utage'|'other'|null(null = 旧構成)
+ *   categories … 見つかった種別フォルダ [{ id, name, category }]
+ *   unnamed    … 命名規約を満たさないフォルダ名。呼び出し側が警告に出す(黙って捨てない)
+ *
+ * Drive の読み取りは「親 1 回 + 種別フォルダの数」。種別は 3 つなので最大 4 往復で、
+ * 結果は photos.mjs が Blobs に 10 分キャッシュするため閲覧者が増えても回数は増えない。
+ * 種別フォルダの取得は並列にする(直列だと 3 往復ぶん待ち時間が積み上がる)。 */
+export async function listFolderTree(parentId) {
+  const top = config.isMock ? mockDriveFolders(parentId) : await fetchFolders(parentId);
+
+  const categories = [];
+  const events = [];
+  const unnamed = [];
+
+  for (const f of top) {
+    const cat = folderCategory(f.name);
+    if (cat) {
+      categories.push({ id: f.id, name: f.name, category: cat });
+      continue;
+    }
+    // 種別フォルダでなければ旧構成の大会フォルダとして読む(移行中だけ存在する)
     const parsed = parseFolderName(f.name);
-    return {
-      id: f.id,
-      name: f.name,
-      date: parsed ? parsed.date : null,
-      title: parsed ? parsed.title : '',
-      norm: parsed ? parsed.norm : '',
-    };
+    if (parsed) events.push(toEventFolder(f, parsed, null));
+    else unnamed.push(f.name);
+  }
+
+  const children = await Promise.all(
+    categories.map((c) => (config.isMock ? mockDriveFolders(c.id) : fetchFolders(c.id)))
+  );
+
+  categories.forEach((c, i) => {
+    for (const f of children[i]) {
+      if (isGuideFolder(f.name)) continue; // Player's Guide の置き場。写真ではない
+      const parsed = parseFolderName(f.name);
+      if (parsed) events.push(toEventFolder(f, parsed, c.category));
+      else unnamed.push(`${c.name}/${f.name}`);
+    }
   });
+
+  return { events, categories, unnamed };
 }
 
 async function fetchFolders(parentId) {

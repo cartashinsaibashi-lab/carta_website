@@ -63,8 +63,9 @@ function num(v) {
   return typeof v === 'number' && isFinite(v) ? v : 0;
 }
 
-// league 名から wolf/utage/other を判定(部分一致・大文字小文字無視)
-function categoryOf(ev) {
+/* league 名から wolf/utage/other を判定(部分一致・大文字小文字無視)。
+ * photos.mjs も使う — 大会写真のフォルダを種別で絞り込むため(#72)。 */
+export function categoryOf(ev) {
   const name = ((ev.behaviour && ev.behaviour.league && ev.behaviour.league.name) || '').toLowerCase();
   const hit = (list) => list.some((k) => name.includes(k.toLowerCase()));
   if (hit(config.categoryWolf)) return 'wolf';

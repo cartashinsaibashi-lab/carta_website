@@ -4,6 +4,8 @@
 // PokerLens には大会に複数枚の写真を紐づける仕組みが無い(告知用の 1 枚だけで、
 // 実データでは過去 921 大会すべてで空)。そのため写真は Drive に置いてもらい、
 // 「YYYY-MM-DD 大会名」のフォルダ名から大会を突き合わせる(詳細は lib/drive.mjs)。
+// 大会フォルダは種別フォルダ(WOLF / 宴 / 歌留多)の下に置く。移行中は旧位置
+// (親フォルダ直下)のフォルダも読む — 詳細と移行の段取りは lib/drive.mjs 冒頭。
 //
 // 閲覧者のアクセスがそのまま Drive に飛ばないよう、フォルダ一覧・ファイル一覧とも
 // Netlify Blobs に置いて使い回す。画像そのものは Google の CDN からブラウザが直接
@@ -14,9 +16,10 @@
 // 無ければ空配列を返し、フロントは写真タブを出さないだけになる。
 
 import { plGet } from './lib/pokerlens.mjs';
+import { categoryOf } from './lib/adapter.mjs';
 import { config as appConfig } from './lib/config.mjs';
 import {
-  listFolders,
+  listFolderTree,
   listImages,
   matchFolder,
   eventFolderKey,
@@ -41,7 +44,11 @@ const FULL_W = 1600;
  * するため、長すぎると消えるまでの時間が延びる。その折り合いで 10 分にしている。 */
 const CACHE_MS = 10 * 60e3;
 
-const FOLDERS_KEY = 'folder-index';
+/* フォルダ索引のキャッシュキー。
+ * **保存する形が変わったら必ず名前も変える。** #72 で配列から
+ * { events, categories, unnamed } のオブジェクトに変わったため v2 にした。
+ * 同じキーのままだと、デプロイ直後に前の形の値を読んで落ちる。 */
+const FOLDERS_KEY = 'folder-index-v2';
 
 let _store; // undefined=未試行 / null=利用不可 / object=store
 
@@ -94,19 +101,17 @@ async function cached(key, load) {
   }
 }
 
-/* 親フォルダ直下のフォルダ一覧。
+/* 種別フォルダを 1 段降りて集めた大会フォルダの索引。
  * 命名規約(先頭に YYYY-MM-DD)を満たさないフォルダは、写真が出ないまま気付かれない
  * ことになるので警告に出す。Drive を実際に見に行ったときだけログするので、
  * キャッシュが効いている間は繰り返さない。 */
 async function loadFolders() {
-  const res = await cached(FOLDERS_KEY, () => listFolders(appConfig.photoFolderId));
-  if (res.fetched) {
-    const bad = res.items.filter((f) => !f.date).map((f) => f.name);
-    if (bad.length) {
-      console.warn(
-        '[photos] 日付が読めないフォルダ名(「YYYY-MM-DD 大会名」にしてください): ' + bad.join(' / ')
-      );
-    }
+  const res = await cached(FOLDERS_KEY, () => listFolderTree(appConfig.photoFolderId));
+  if (res.fetched && res.items.unnamed.length) {
+    console.warn(
+      '[photos] 日付が読めないフォルダ名(「YYYY-MM-DD 大会名」にしてください): ' +
+        res.items.unnamed.join(' / ')
+    );
   }
   return res;
 }
@@ -159,18 +164,25 @@ export default async (_req, context) =>
 async function respond(eventId) {
   const folders = await loadFolders();
 
-  // 引数なし: フォルダ一覧をそのまま返す。運営が付けたフォルダ名がこちらでどう
-  // 解釈されているか(日付を読めているか)を、実際に大会を開かずに確認するため。
+  /* 引数なし: フォルダ一覧をそのまま返す。運営が付けたフォルダ名がこちらでどう
+   * 解釈されているか(日付を読めているか・どの種別に入っているか)を、
+   * 実際に大会を開かずに確認するため。
+   * unclassified は**移行が終わったかどうかの目印**(#72)。これが 0 になったら
+   * 旧構成(親フォルダ直下)の読み取りを外してよい。 */
   if (!eventId) {
+    const { events, categories, unnamed } = folders.items;
     return json(
       {
         parentFolderId: appConfig.photoFolderId,
-        folders: folders.items.map((f) => ({
+        categories: categories.map((c) => ({ id: c.id, name: c.name, category: c.category })),
+        unclassified: events.filter((f) => !f.category).length,
+        unnamed, // 命名規約を満たさず写真が出ないフォルダ
+        folders: events.map((f) => ({
           id: f.id,
           name: f.name,
           date: f.date,
           title: f.title,
-          named: !!f.date, // false = 命名規約を満たしていない(写真が出ない)
+          category: f.category, // null = 旧構成のまま(種別が決まらない)
         })),
         stale: folders.stale,
       },
@@ -181,7 +193,8 @@ async function respond(eventId) {
   const ev = await plGet(`/v1/event/${eventId}`);
   if (!ev) return json({ error: 'event not found' }, { status: 404 });
 
-  const hit = matchFolder(folders.items, eventFolderKey(ev));
+  // 種別を渡して、同じシリーズのフォルダを優先して照合する(旧構成はフォールバック)
+  const hit = matchFolder(folders.items.events, eventFolderKey(ev), categoryOf(ev));
   if (!hit) {
     // 大半の大会には写真フォルダが無い(= 正常)。ここでログを出すと本当の命名ミスが埋もれる
     return json({ eventId, folder: null, photos: [] }, cacheOpts(folders.stale));
@@ -191,7 +204,7 @@ async function respond(eventId) {
   return json(
     {
       eventId,
-      folder: { id: hit.id, name: hit.name, match: hit.match },
+      folder: { id: hit.id, name: hit.name, match: hit.match, category: hit.category },
       photos: files.items.map(toPhoto),
       stale: folders.stale || files.stale,
     },
