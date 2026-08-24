@@ -4,8 +4,8 @@
 // PokerLens には大会に複数枚の写真を紐づける仕組みが無い(告知用の 1 枚だけで、
 // 実データでは過去 921 大会すべてで空)。そのため写真は Drive に置いてもらい、
 // 「YYYY-MM-DD 大会名」のフォルダ名から大会を突き合わせる(詳細は lib/drive.mjs)。
-// 大会フォルダは種別フォルダ(WOLF / 宴 / 歌留多)の下に置く。移行中は旧位置
-// (親フォルダ直下)のフォルダも読む — 詳細と移行の段取りは lib/drive.mjs 冒頭。
+// 大会フォルダは種別フォルダ(WOLF / 宴 / 歌留多)の下にあるものだけを読む
+// — 構成の詳細は lib/drive.mjs 冒頭。
 //
 // 閲覧者のアクセスがそのまま Drive に飛ばないよう、フォルダ一覧・ファイル一覧とも
 // Netlify Blobs に置いて使い回す。画像そのものは Google の CDN からブラウザが直接
@@ -46,9 +46,10 @@ const CACHE_MS = 10 * 60e3;
 
 /* フォルダ索引のキャッシュキー。
  * **保存する形が変わったら必ず名前も変える。** #72 で配列から
- * { events, categories, unnamed } のオブジェクトに変わったため v2 にした。
- * 同じキーのままだと、デプロイ直後に前の形の値を読んで落ちる。 */
-const FOLDERS_KEY = 'folder-index-v2';
+ * { events, categories, unnamed, misplaced } のオブジェクトに変わったため v3 にした。
+ * 同じキーのままだと、デプロイ直後に前の形の値を読んで落ちる。
+ * 併せて、デプロイ直後に古い索引を掴んで写真が出ない時間ができるのも避けられる。 */
+const FOLDERS_KEY = 'folder-index-v3';
 
 let _store; // undefined=未試行 / null=利用不可 / object=store
 
@@ -107,11 +108,22 @@ async function cached(key, load) {
  * キャッシュが効いている間は繰り返さない。 */
 async function loadFolders() {
   const res = await cached(FOLDERS_KEY, () => listFolderTree(appConfig.photoFolderId));
-  if (res.fetched && res.items.unnamed.length) {
-    console.warn(
-      '[photos] 日付が読めないフォルダ名(「YYYY-MM-DD 大会名」にしてください): ' +
-        res.items.unnamed.join(' / ')
-    );
+  if (res.fetched) {
+    if (res.items.unnamed.length) {
+      console.warn(
+        '[photos] 日付が読めないフォルダ名(「YYYY-MM-DD 大会名」にしてください): ' +
+          res.items.unnamed.join(' / ')
+      );
+    }
+    /* 種別フォルダの外に大会フォルダが残っていると写真が出ない。命名ミスとは
+     * 直し方が違う(名前ではなく置き場所を直す)ので、別の文言で警告する。 */
+    if (res.items.misplaced.length) {
+      console.warn(
+        '[photos] 種別フォルダ(WOLF / 宴 / 歌留多)の外にある大会フォルダ' +
+          '(移動しないと写真が出ません): ' +
+          res.items.misplaced.join(' / ')
+      );
+    }
   }
   return res;
 }
@@ -167,22 +179,21 @@ async function respond(eventId) {
   /* 引数なし: フォルダ一覧をそのまま返す。運営が付けたフォルダ名がこちらでどう
    * 解釈されているか(日付を読めているか・どの種別に入っているか)を、
    * 実際に大会を開かずに確認するため。
-   * unclassified は**移行が終わったかどうかの目印**(#72)。これが 0 になったら
-   * 旧構成(親フォルダ直下)の読み取りを外してよい。 */
+   * misplaced は**種別フォルダへの移動漏れ**(#72)。ここが空になっていれば移行完了。 */
   if (!eventId) {
-    const { events, categories, unnamed } = folders.items;
+    const { events, categories, unnamed, misplaced } = folders.items;
     return json(
       {
         parentFolderId: appConfig.photoFolderId,
         categories: categories.map((c) => ({ id: c.id, name: c.name, category: c.category })),
-        unclassified: events.filter((f) => !f.category).length,
+        misplaced, // 親フォルダ直下に残っていて写真が出ない大会フォルダ
         unnamed, // 命名規約を満たさず写真が出ないフォルダ
         folders: events.map((f) => ({
           id: f.id,
           name: f.name,
           date: f.date,
           title: f.title,
-          category: f.category, // null = 旧構成のまま(種別が決まらない)
+          category: f.category, // 'wolf' | 'utage' | 'other'
         })),
         stale: folders.stale,
       },

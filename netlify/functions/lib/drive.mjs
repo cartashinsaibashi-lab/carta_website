@@ -2,21 +2,19 @@
 //
 // Drive 側の運用(顧客と合意済み):
 //   親フォルダ … 「リンクを知っている全員が閲覧可」で共有。ID は PHOTO_DRIVE_FOLDER_ID
-//     ├ 「WOLF」/「宴」/「歌留多」… 種別フォルダ。**この 1 段で大会写真の種別が決まる**
-//     │    ├ 「Play Guide」… Player's Guide の PDF(写真ではないのでここでは無視する)
-//     │    └ 「YYYY-MM-DD 大会名」… 大会 1 つにつき 1 フォルダ
-//     │         └ 写真ファイル
-//     └ 「YYYY-MM-DD 大会名」… 種別フォルダを作る前の旧構成。移行中だけ存在する
+//     └ 「WOLF」/「宴」/「歌留多」… 種別フォルダ。**この 1 段で大会写真の種別が決まる**
+//          ├ 「Play Guide」… Player's Guide の PDF(写真ではないのでここでは無視する)
+//          └ 「YYYY-MM-DD 大会名」… 大会 1 つにつき 1 フォルダ
+//               └ 写真ファイル
 //
 // 共有してもらうのは親フォルダだけで、大会ごとのフォルダは名前から自動照合する。
 // こうすると運営は「フォルダを作って写真を入れる」だけでよく、
 // 大会 ID とアルバム URL を対応づける台帳(スプレッドシート)の運用が要らない。
 //
-// **旧構成(親フォルダ直下に大会フォルダ)も読み続ける(#72)。**
-// 種別フォルダは運営が手で作って既存フォルダを移動する。移動とデプロイを同時刻に
-// 合わせるのは無理なので、両方を読めるようにしておく。旧位置のフォルダは種別不明
-// (category: null)として扱い、大会との照合ではフォールバックとして使う。
-// 移行が済んで種別不明が 0 件になったら旧構成の読み取りを外す。
+// **大会フォルダは種別フォルダの中にあるものだけを読む(#72)。**
+// 種別フォルダを作る前は親フォルダの直下に大会フォルダを並べていたが、その位置は読まない。
+// ただし黙って無視すると「写真が出ないことに誰も気付かない」ので、親フォルダ直下に
+// 残っている大会フォルダは misplaced として返し、呼び出し側が警告に出す。
 //
 // フォルダ名に開催日を入れてもらうのは必須。実データで、過去 921 大会のうち
 // ユニークな大会名は 274 種類しかなく(FREEROLL が 147 件、#2 DEEP STACK が 141 件)、
@@ -26,7 +24,7 @@
 // 万一キーが漏れても非公開のドライブには届かない。
 //
 // 入出力:
-//   listFolderTree(parentId)              → { events, categories, unnamed }
+//   listFolderTree(parentId)              → { events, categories, unnamed, misplaced }
 //   listImages(folderId)                  → [{ id, name, w, h, takenAt }]
 //   matchFolder(events, evKey, category)  → 一致したフォルダ(+ match 種別)| null
 //   eventFolderKey(venueEvent)            → { date, name } (照合に使う大会側のキー)
@@ -182,17 +180,13 @@ function pickFolder(folders, key) {
 
 /* 大会 → フォルダの照合。
  *
- * **同じ種別のフォルダを先に探し、無ければ種別不明(旧構成)から探す**(#72)。
- * 移行中は同じ大会のフォルダが新旧どちらの位置にもあり得るので、新しい位置を優先する。
- * category を渡さないときは全部から探す(種別が決まらない呼び出し向け)。
- * 種別で先に絞ることで、別シリーズの同日同名フォルダを掴む事故も防げる。 */
+ * **同じ種別のフォルダの中だけを探す**(#72)。フォルダは必ずどれかの種別フォルダの
+ * 下にあるので、種別で絞っても取りこぼさない。絞ることで、別シリーズの同日同名フォルダを
+ * 掴む事故も防げる。category を渡さないときは全部から探す(種別が決まらない呼び出し向け)。 */
 export function matchFolder(folders, key, category) {
   if (!key.date || !key.name) return null;
   if (!category) return pickFolder(folders, key);
-  return (
-    pickFolder(folders.filter((f) => f.category === category), key) ||
-    pickFolder(folders.filter((f) => !f.category), key)
-  );
+  return pickFolder(folders.filter((f) => f.category === category), key);
 }
 
 // --- 取得 -----------------------------------------------------------------
@@ -222,7 +216,7 @@ function toEventFolder(f, parsed, category) {
     date: parsed.date,
     title: parsed.title,
     norm: parsed.norm,
-    category, // null = 旧構成(親フォルダ直下)で種別が決まらないもの
+    category, // 'wolf' | 'utage' | 'other'。種別フォルダの位置で決まる
   };
 }
 
@@ -230,9 +224,10 @@ function toEventFolder(f, parsed, category) {
  *
  * 返り値:
  *   events     … 大会フォルダ [{ id, name, date, title, norm, category }]
- *                 category は 'wolf'|'utage'|'other'|null(null = 旧構成)
  *   categories … 見つかった種別フォルダ [{ id, name, category }]
- *   unnamed    … 命名規約を満たさないフォルダ名。呼び出し側が警告に出す(黙って捨てない)
+ *   unnamed    … 命名規約を満たさないフォルダ名(写真が出ない)
+ *   misplaced  … 親フォルダ直下に残っている大会フォルダ名。種別が決まらないので写真が
+ *                出ない = 種別フォルダへの移動漏れ。呼び出し側が警告に出す(黙って捨てない)
  *
  * Drive の読み取りは「親 1 回 + 種別フォルダの数」。種別は 3 つなので最大 4 往復で、
  * 結果は photos.mjs が Blobs に 10 分キャッシュするため閲覧者が増えても回数は増えない。
@@ -243,6 +238,7 @@ export async function listFolderTree(parentId) {
   const categories = [];
   const events = [];
   const unnamed = [];
+  const misplaced = [];
 
   for (const f of top) {
     const cat = folderCategory(f.name);
@@ -250,9 +246,11 @@ export async function listFolderTree(parentId) {
       categories.push({ id: f.id, name: f.name, category: cat });
       continue;
     }
-    // 種別フォルダでなければ旧構成の大会フォルダとして読む(移行中だけ存在する)
+    /* 親フォルダ直下の大会フォルダは読まない(種別が決まらないため)。
+     * 名前が命名規約に合っているものは「移動漏れ」として区別する —
+     * 単なる命名ミスと混ぜると、運営に伝えるべき直し方が変わってしまう。 */
     const parsed = parseFolderName(f.name);
-    if (parsed) events.push(toEventFolder(f, parsed, null));
+    if (parsed) misplaced.push(f.name);
     else unnamed.push(f.name);
   }
 
@@ -269,7 +267,7 @@ export async function listFolderTree(parentId) {
     }
   });
 
-  return { events, categories, unnamed };
+  return { events, categories, unnamed, misplaced };
 }
 
 async function fetchFolders(parentId) {

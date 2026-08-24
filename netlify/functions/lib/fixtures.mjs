@@ -938,13 +938,15 @@ function mockCategoryOf(ev) {
   return 'other';
 }
 
-/* 種別フォルダ構成を移行し終えていない大会を 1 件だけ作る(#72)。
- * 旧構成(親フォルダ直下に大会フォルダ)を読み続ける経路と、
- * 照合の「種別優先 → 種別不明にフォールバック」をローカルで通せるようにするため。 */
-const MOCK_LEGACY_EVENT_ID = 'evt-wolf-final';
+/* 種別フォルダへ移動し忘れた大会を 1 件だけ作る(#72)。
+ * 親フォルダ直下に残った大会フォルダは**読まない**(種別が決まらないため)。
+ * 「写真が出ないまま気付かれない」ことを防ぐ misplaced の警告経路を、
+ * ローカルでも通せるようにするために 1 件だけ置いてある。
+ * この大会は mock では Photos タブが出ない — それが正しい挙動。 */
+const MOCK_MISPLACED_EVENT_ID = 'evt-wolf-final';
 
 /* フォルダ一覧。parentId が種別フォルダなら大会フォルダを、それ以外(= 親フォルダ)なら
- * 種別フォルダ + 旧構成の大会フォルダを返す。
+ * 種別フォルダ + 移動し忘れた大会フォルダを返す。
  *
  * **開催予定の大会にもフォルダを作る**。告知画像を先に載せる運用があるため、
  * フロントは状態で絞らず写真を取りに行くようになった(#48)。以前は
@@ -959,7 +961,7 @@ export function mockDriveFolders(parentId) {
   });
 
   const events = buildEvents(Date.now()).filter(
-    (e) => e.id !== 'evt-wolf-sat' && e.id !== MOCK_LEGACY_EVENT_ID
+    (e) => e.id !== 'evt-wolf-sat' && e.id !== MOCK_MISPLACED_EVENT_ID
   );
 
   const cat = MOCK_CATEGORY_FOLDERS.find((c) => c.id === parentId);
@@ -983,8 +985,8 @@ export function mockDriveFolders(parentId) {
     name: c.name,
     mimeType: 'application/vnd.google-apps.folder',
   }));
-  const legacy = buildEvents(Date.now()).find((e) => e.id === MOCK_LEGACY_EVENT_ID);
-  if (legacy) folders.push(eventFolder(legacy));
+  const misplaced = buildEvents(Date.now()).find((e) => e.id === MOCK_MISPLACED_EVENT_ID);
+  if (misplaced) folders.push(eventFolder(misplaced));
   // 命名規約(先頭に YYYY-MM-DD)を満たさないフォルダ。
   // photos.mjs が警告ログを出す経路をローカルでも通せるように 1 つ混ぜてある。
   folders.push({
