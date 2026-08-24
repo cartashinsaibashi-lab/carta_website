@@ -1586,14 +1586,31 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   text-align: center;
 }
 
-/* ストラクチャー表は中央寄せ・全列センター揃えで余白を均等に。
- * 幅に上限を設けてパネル中央に配置する。 */
-.data-table.structure-table {
-  min-width: 0;
-  width: 100%;
-  max-width: 460px;
+/* ストラクチャー表だけは枠線ごと表の幅に縮めて中央に置く(#68)。
+ * 表は 420px しかないのに枠(.table-scroll)がパネル全幅(実測 953px)まで伸びていて、
+ * 表が広い枠の中に浮いて「右に寄っている」ように見えていた。
+ * 幅が足りない画面では max-width で全幅に戻り、従来どおり横スクロールできる。 */
+.table-scroll.structure-scroll {
+  width: fit-content;
+  max-width: 100%;
   margin-left: auto;
   margin-right: auto;
+}
+
+/* ストラクチャー表は 4 列等幅・全列センター揃え。
+ *
+ * 以前は Lv / Ante / Time にだけ固定幅(3.4em / 4.6em / 3.8em)を与えていたため、
+ * table-layout: fixed の余り幅を Blinds 列が全部吸収して 330px に広がり、
+ * Lv の数字と Blinds の数字の間に大きな空白ができる一方 Ante / Time が右端に
+ * 張り付いて、行の重心が右へずれて見えていた(#68)。
+ * 列幅指定をやめて 4 等分させると、どの行も均等に並ぶ。
+ * 幅は 420px 固定 — 4 列の中で一番長い "1,000 / 2,000"(Blinds)が
+ * 105px の列に余裕を持って収まる下限がこのあたりで、これ以上広げると
+ * また列内の空白が目立つ。スマホでは max-width: 100% 側が効いて全幅になる。 */
+.data-table.structure-table {
+  min-width: 0;
+  width: 420px;
+  max-width: 100%;
   table-layout: fixed;
   font-variant-numeric: tabular-nums;
 }
@@ -1604,17 +1621,6 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   white-space: nowrap;
   text-align: center;
 }
-
-.data-table.structure-table th:first-child,
-.data-table.structure-table td:first-child {
-  width: 3.4em;
-}
-
-/* Blinds を主役に、Ante / Time は控えめの幅。すべて中央揃え */
-.data-table.structure-table th:nth-child(3),
-.data-table.structure-table td:nth-child(3) { width: 4.6em; }
-.data-table.structure-table th:nth-child(4),
-.data-table.structure-table td:nth-child(4) { width: 3.8em; }
 
 .row-break td {
   background: rgba(var(--accent-rgb), 0.07);
