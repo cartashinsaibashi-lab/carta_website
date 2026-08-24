@@ -295,7 +295,9 @@
     }).join('');
     return (
       '<div class="structure-meta">Starting Stack ' + num(ev.startingStack) + ' / BB Ante format</div>' +
-      '<div class="table-scroll"><table class="data-table structure-table">' +
+      /* structure-scroll: 枠線を表の幅に合わせて縮めるための目印(css 側で使う)。
+       * 他タブの表は全幅のままなので、共通の table-scroll には持たせない。 */
+      '<div class="table-scroll structure-scroll"><table class="data-table structure-table">' +
       '<thead><tr><th>Lv</th><th>Blinds (SB/BB)</th><th>Ante</th><th>Time</th></tr></thead>' +
       '<tbody>' + body + '</tbody>' +
       '</table></div>'
