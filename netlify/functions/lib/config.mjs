@@ -63,7 +63,9 @@ export const config = {
   /* 種別フォルダの直下に置く Player's Guide(PDF)のフォルダ名。
    * ここでフォルダ名を持っておくのは、大会フォルダの命名ミス警告から除外するため
    * (「YYYY-MM-DD で始まっていない」と毎回警告に出てしまう)。
-   * PDF を実際に読むのは別 issue。 */
+   * PDF を実際に読むのは別 issue。
+   * 実際に運営が作ったフォルダは**スペース無しの「PlayGuide」**(2026-08-24 に確認)。
+   * normalizeTitle() が空白を全部落とすのでこの綴りでも一致する。 */
   photoGuideFolder: csv(process.env.PHOTO_GUIDE_FOLDER || "Play Guide,Player's Guide"),
 };
 
