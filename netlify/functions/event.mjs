@@ -37,10 +37,17 @@ export default async (_req, context) =>
       return json({ payouts: buildPayouts(payouts) }, { cacheSeconds: 300 });
     }
 
-    // フル詳細: structure / payouts は常に取得。players は past(結果)と running(座席)で取得。
-    // ランキングポイントは Prize / Results の両タブで使うため、ここで一緒に載せて往復を減らす
-    // (対象外の大会では null が返り、フロントはポイント列を出さない)。
-    const needPlayers = code === 'closed' || code === 'running';
+    /* フル詳細: structure / payouts は常に取得。players は past(結果)と running(座席)で取得。
+     * ランキングポイントは Prize / Results の両タブで使うため、ここで一緒に載せて往復を減らす
+     * (対象外の大会では null が返り、フロントはポイント列を出さない)。
+     *
+     * **一時停止中(pausedLive)も取る**。一時停止すると status.code は Running ではなく
+     * 開始前と同じ Opened に戻るため(pausedLive() の説明を参照)、生の code だけで見ると
+     * players を取りに行かなくなる。ところが toDetailEvent() は statusOf() 経由の
+     * base.status === 'running'(= 一時停止も running 扱い)で座席を組むので、
+     * **材料が null のまま buildSeats() が呼ばれて seats が空になり、Live タブから
+     * Seating が丸ごと消えていた**(#70)。判定の基準を toDetailEvent() 側とそろえる。 */
+    const needPlayers = code === 'closed' || code === 'running' || pausedLive(ev);
 
     /* 日をまたぐ大会の日別レコード(behaviour.isFlight)だけ、同じ大会の全日程を取りに行く。
      * これで「最終日かどうか」が決まり、通過日は Survivor タブ、最終日は Results タブになる(#54)。
