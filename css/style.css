@@ -296,23 +296,18 @@ body[data-theme="utage"] .brand-mark { border-radius: 50%; }
   z-index: 101;
 }
 
-/* 種別アイコン(ロゴ)。未選択は明暗固定の下地チップで視認性を確保。 */
+/* 種別アイコン(ロゴ)。assets/logo-*.png は 3 種別とも「白 1 色のシルエット + 完全透過の背景」
+ * なので、地色は敷かずそのままヘッダーに重ねる。以前は視認性のため濃色(#17132f)の角丸チップを
+ * 下地に敷いていたが、未選択タブの opacity: 0.5 と重なって「ロゴにうっすら背景が付いている」
+ * ように見えていたため全廃した(#66)。
+ * 副作用として和紙アイボリー地の宴テーマでは白抜きロゴが視認しづらくなるが、今回は許容する方針。 */
 .category-tab-icon {
   width: 50px;
   height: 50px;
   object-fit: contain;
   display: block;
-  border-radius: 9px;
   padding: 2px;
 }
-/* 3 種別とも白抜きロゴなので、下地は共通の濃色 */
-.category-tab[data-category="wolf"] .category-tab-icon,
-.category-tab[data-category="other"] .category-tab-icon,
-.category-tab[data-category="utage"] .category-tab-icon { background: #17132f; }
-/* 選択タブはコンテンツ箱と一体化(ロゴ下地は箱の地色に合わせて透過) */
-.category-tab.is-active .category-tab-icon { background: transparent; }
-/* ただし宴は白抜きロゴなので、選択中も下地の濃色を残す(和紙色の地に溶けるため) */
-.category-tab.is-active[data-category="utage"] .category-tab-icon { background: #17132f; }
 
 .category-tab-count { display: none; }
 
@@ -2850,10 +2845,6 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
     padding: 3px 4px;
   }
   .category-tab.is-active { background: none; }
-  /* 選択ロゴの下地チップを戻す(透過解除)。3 種別とも白抜きロゴなので共通の濃色 */
-  .category-tab.is-active[data-category="wolf"] .category-tab-icon,
-  .category-tab.is-active[data-category="other"] .category-tab-icon,
-  .category-tab.is-active[data-category="utage"] .category-tab-icon { background: #17132f; }
 
   /* 日付セレクター: 全幅・コンパクト */
   .date-strip {
