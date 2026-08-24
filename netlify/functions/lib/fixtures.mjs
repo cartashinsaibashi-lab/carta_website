@@ -717,6 +717,10 @@ const PLAYERS_BY_ID = {
   'evt-weekly-bounty': makePlayers(10),
   'evt-wolf-main': makeSeatedPlayers(138, 9),   // 進行中: 9 max × 16 卓ぶんの着席者
   'evt-utage-break': makeSeatedPlayers(41, 9),  // 休憩中: 5 卓ぶんの着席者
+  /* 一時停止中の着席者(stats.totalPlayers = 22 / totalTables = 3 に合わせた人数)。
+   * これが無いと「一時停止中も players を取りに行くか」を mock で確認できず、
+   * 実際に seats が空になる不具合(#70)を live でしか踏めなかった。 */
+  'evt-wolf-paused': makeSeatedPlayers(22, 9),
   'evt-wolf-day1a': makeCarryOverPlayers(66, 12), // 通過日: 66 エントリー中 12 名が翌日へ
   'evt-wolf-final': makeFinalDayPlayers(9),      // 最終日: その日に来たファイナルテーブルの 9 名だけ
   'evt-wolf-champ': makeSummaryPlayers(40, 18),  // 親: 大会全体の最終成績(入賞 18 名)
