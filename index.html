@@ -98,6 +98,11 @@
       </div>
     </div>
 
+    <!-- クイックリンク行(#73)。一覧の外にある導線(Player's Guide など)をここに並べる。
+         中身は app.js が /api/site-links の結果から組み立てる。用意できていないものは
+         ボタンごと出さない(空リンクを踏ませない)。Wolf / 宴 のみで、歌留多では行ごと出ない。 -->
+    <div class="quick-links" id="quickLinks" aria-label="Quick links" hidden></div>
+
     </div><!-- /.filter-bar -->
 
     <!-- Event list (cards + accordion) -->

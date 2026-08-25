@@ -764,6 +764,50 @@ body[data-theme="wolf"] .status-pill.is-active {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- クイックリンク行(#73) ----------
+ * 状況フィルタの直下に並ぶ、一覧の外への導線(Player's Guide など)。
+ * ボタンが 0 個のときは app.js が hidden を立てるので、行そのものが消える。
+ * 状況フィルタのピルと同じ高さ・角丸に揃えつつ、フィルタ(状態の切り替え)ではなく
+ * 別の場所へ移動するリンクだと分かるよう、地色をアクセント寄りにして区別する。 */
+
+.quick-links {
+  display: flex;
+  gap: 6px;
+  /* 上は状況フィルタとの間隔。下は一覧との間で、状況フィルタが直に一覧と接していた
+   * これまでの詰まり具合を大きく変えないよう最小限にする。 */
+  margin: 10px 0 2px;
+}
+
+.quick-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  border-radius: 99px;
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent-bright);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: all .2s;
+}
+
+.quick-link:hover {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: var(--accent);
+}
+
+/* ラベルは通常幅の長い方だけを出す(短い方はスマホ幅で入れ替える) */
+.quick-link .ql-label { overflow: hidden; text-overflow: ellipsis; }
+.quick-link .ql-label-short { display: none; }
+
 /* ---------- 初回表示のシリーズ選択(全画面) ----------
  * ローディング(z-index 300)より手前に出し、選ぶまで背後を操作させない。 */
 
@@ -2922,6 +2966,26 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
     padding-right: 11px;
     font-size: 12px;
   }
+
+  /* クイックリンク行(#73): フィルタバーはスクロールしても上に残るため、
+   * 行が増えたぶん一覧の見える面積が減る。狭い画面ではラベルを短い方に入れ替え、
+   * 高さも詰めて占有を最小限にする。 */
+  /* 上の間隔は .status-filter の padding-bottom が作るので、ここでは下だけ空ける。
+   * 左右は状況フィルタと同じ負のマージン + padding にして、ボタンの端を上の行と揃える。 */
+  .quick-links {
+    gap: 5px;
+    margin: 0 -14px 10px;
+    padding: 0 6px;
+  }
+
+  .quick-link {
+    min-height: 28px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .quick-link .ql-label { display: none; }
+  .quick-link .ql-label-short { display: inline; }
 
   /* カード: コンパクト表示 */
   .card-expand { padding: 5px 12px; gap: 8px; }

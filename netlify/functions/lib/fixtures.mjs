@@ -1022,6 +1022,26 @@ export function mockDriveImages(folderId) {
   });
 }
 
+/* Player's Guide フォルダの中身(mock)。#73 の「更新日が最新の PDF を選ぶ」経路を
+ * ローカルでも通せるように、わざと 2 つ入れて古い方を混ぜてある。
+ * ID は実在しないので drive.google.com のリンク先は開けない(ボタンが出るかの確認用)。 */
+export function mockDrivePdfs(folderId) {
+  return [
+    {
+      id: folderId + '-pdf-v1',
+      name: "Player's Guide (old).pdf",
+      mimeType: 'application/pdf',
+      modifiedTime: '2026-05-01T09:00:00.000Z',
+    },
+    {
+      id: folderId + '-pdf-v2',
+      name: "Player's Guide.pdf",
+      mimeType: 'application/pdf',
+      modifiedTime: '2026-08-20T09:00:00.000Z',
+    },
+  ];
+}
+
 function hashCode(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0x7fffffff;
