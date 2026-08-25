@@ -2,7 +2,9 @@
 // Prize タブ(順位ごとの配点)と Results タブ(その選手が得たポイント)の両方が同じ索引を引く。
 //
 // 入出力:
-//   pointsForEvent(eventId) → { "1": 260, "2": 182, … } | null(ランキング対象外の大会)
+//   pointsForEvent(eventId)  → { "1": 260, "2": 182, … } | null(ランキング対象外の大会)
+//   findRanking(category)    → { id, name, players } | null(種別 → ランキングの対応づけ #78)
+//   rankingRows(rankingId)   → [{ rank, name, points, events }](順位表 #78)
 //
 // なぜ索引を作るのか — API の都合でこうするしかない:
 //   POST /v1/ranking/{id}/points が返すレコードは reference{ id, description, type:'event' } を
@@ -40,6 +42,110 @@ const INDEX_KEY = 'points-index';
 const MAX_RANKINGS = 20;
 const MAX_POINT_PAGES = 10; // 1 ページ 1000 件。最大のランキングでも実測 901 行なので 1 ページで足りる
 const REF_CONCURRENCY = 8; // event-by-reference の同時実行数(43 件なら 6 往復)
+
+/* --- 種別 → ランキングの対応づけ / 順位表(#78) ------------------------- */
+
+/* ランキングの一覧。名前も選手数もここから取れるので、順位表を引く前の
+ * 「ボタンを出すか」の判断にも使う(site-links.mjs)。 */
+async function searchRankings() {
+  const res = await plPost('/v1/ranking/search', { text: '', pageIndex: 1, pageSize: 100 });
+  return ((res && res.results) || []).slice(0, MAX_RANKINGS);
+}
+
+function rankingKeywords(category) {
+  if (category === 'wolf') return config.rankingNameWolf;
+  if (category === 'utage') return config.rankingNameUtage;
+  return null; // 歌留多(other)にシリーズランキングは無い
+}
+
+function configuredRankingId(category) {
+  if (category === 'wolf') return config.rankingWolfId;
+  if (category === 'utage') return config.rankingUtageId;
+  return '';
+}
+
+function startDateOf(rk) {
+  return String((rk.behaviour && rk.behaviour.startDate) || '');
+}
+
+/* 種別に対応するランキングを 1 つ選ぶ。
+ *
+ * 環境変数で ID が指定されていればそれを最優先する。**名前だけでは決められない**ため:
+ *   - 「宴」で名前一致させると、中身が空の旧版(宴POS ver2 / 登録 0 名)も当たる
+ *   - 一方でランキング名にはシリーズ番号が入る(WOLF 2026 #02)ので、
+ *     ID を設定に焼き込むと次のシリーズで更新漏れになる
+ * そのため既定は名前一致で、**登録者 0 名を除いたうえで開催期間が最も新しいもの**を選ぶ。
+ * 0 名を除くのは旧版を掴まないため、新しい方を採るのはシリーズが更新されたら
+ * 自動で追従するため。全部 0 名なら(=まだ誰も付いていない新シリーズ)新しい方を返す。 */
+export async function findRanking(category) {
+  const keywords = rankingKeywords(category);
+  if (!keywords) return null;
+
+  const all = await searchRankings();
+  const wanted = configuredRankingId(category);
+  if (wanted) {
+    const hit = all.find((rk) => rk.id === wanted);
+    // 設定した ID が見つからないのは設定ミス。黙って別のランキングに差し替えない
+    if (!hit) {
+      console.warn(`[ranking] 指定された ${category} のランキング ID が見つかりません: ${wanted}`);
+      return null;
+    }
+    return toRankingInfo(hit);
+  }
+
+  const lower = keywords.map((k) => k.toLowerCase());
+  const matched = all.filter((rk) => {
+    const name = String(rk.name || '').toLowerCase();
+    return lower.some((k) => name.indexOf(k) !== -1);
+  });
+  if (!matched.length) return null;
+
+  const withPlayers = matched.filter((rk) => playersOf(rk) > 0);
+  const pool = withPlayers.length ? withPlayers : matched;
+  const newest = pool.reduce((a, b) => (startDateOf(b) > startDateOf(a) ? b : a));
+  return toRankingInfo(newest);
+}
+
+function playersOf(rk) {
+  return Number(rk.stats && rk.stats.totalPlayers) || 0;
+}
+
+function toRankingInfo(rk) {
+  return { id: rk.id, name: rk.name || '', players: playersOf(rk) };
+}
+
+/* 順位表。1 リクエストで全員ぶん取れる(実測 218 名 / 480 名)。
+ *
+ * **orderBy は 'position' を使う。** 'points' を指定すると最下位から返る既知の癖がある。
+ * position はスカラーではなく { index, events, points } のオブジェクトで、表の 3 列は
+ * すべてここから取れる。ポイントは整数とは限らない(46.8 / 83.2 など)ので丸めない。
+ *
+ * 表示名は nickname を優先し、空なら description のイニシャル表記(「Y. Y.」)にする。
+ * 本名は出さない — 実測で全員 privacyAgree: false のため。
+ * nickname の登録率は live で Wolf 218/218・宴 461/480 で、宴には未登録が 19 名いる。 */
+export async function rankingRows(rankingId) {
+  const res = await plPost(`/v1/ranking/${rankingId}/players`, {
+    text: '',
+    orderBy: 'position',
+    pageIndex: 1, // pageIndex は 1 始まり。0 を渡すと 500(ArgumentException)
+    pageSize: 1000,
+  });
+  const rows = (res && res.results) || [];
+  return rows
+    .map((r) => {
+      const pos = r.position || {};
+      const player = r.player || {};
+      const nickname = String(player.nickname || '').trim();
+      return {
+        rank: Number(pos.index) || 0,
+        name: nickname || String(player.description || '').trim(),
+        points: Number(pos.points) || 0,
+        events: Number(pos.events) || 0,
+      };
+    })
+    // 応答は position 順で返るが、順位が入れ替わって見えると表として壊れるので念のため揃える
+    .sort((a, b) => a.rank - b.rank);
+}
 
 let _store; // undefined=未試行 / null=利用不可 / object=store
 

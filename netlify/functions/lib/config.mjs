@@ -42,6 +42,20 @@ export const config = {
   categoryWolf: csv(process.env.POKERLENS_CATEGORY_WOLF || 'wolf,ウルフ'),
   categoryUtage: csv(process.env.POKERLENS_CATEGORY_UTAGE || 'utage,宴'),
 
+  /* --- シリーズランキング(#78) ---
+   * 種別 → ランキングの対応づけ。**名前だけでは決められない**ので ID を直接指定できる。
+   * 実データのランキングは 3 件で、「宴」で名前一致させると中身が空の旧版
+   * (宴POS ver2 / 登録 0 名)も当たってしまう。
+   * ID を空にしておくと下の名前一致で選ぶ(登録者 0 名を除き、期間が最も新しいもの)。 */
+  rankingWolfId: process.env.POKERLENS_RANKING_WOLF || '',
+  rankingUtageId: process.env.POKERLENS_RANKING_UTAGE || '',
+
+  /* 名前一致に使う語。ランキング名は「WOLF 2026 #02」「宴POS ver3」で、
+   * シリーズが増えるたびに新しい名前のものが増える(= ID を固定で焼き込めない)。
+   * 上の categoryWolf / categoryUtage とは別物 — あちらは PokerLens の**リーグ名**。 */
+  rankingNameWolf: csv(process.env.POKERLENS_RANKING_NAME_WOLF || 'wolf,ウルフ'),
+  rankingNameUtage: csv(process.env.POKERLENS_RANKING_NAME_UTAGE || '宴,utage'),
+
   // --- 大会写真(Google Drive) ---
   // PokerLens には大会に複数枚の写真を紐づける仕組みが無い(告知用の 1 枚だけ)ため、
   // 写真は Drive の「リンクを知っている全員が閲覧可」な親フォルダから読む。
