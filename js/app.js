@@ -2466,9 +2466,11 @@
     if (QUICK_LINK_CATEGORIES.indexOf(state.category) !== -1) {
       var links = siteLinks && siteLinks[state.category];
       if (links && links.guidePdf) html += quickLinkHtml(links.guidePdf, "Player's Guide", 'Guide');
-      /* 合計ランキング(#78)。公開されていない種別では出さない */
+      /* 合計ランキング(#78)。公開されていない種別では出さない。
+       * ラベルは運営の呼び方に合わせて「Player of the Series」。スマホ幅の短縮形 POS も
+       * 運営表記そのもので、PokerLens 側のランキング名(「宴POS ver3」)と同じ略語。 */
       if (hasRanking(state.category)) {
-        html += quickButtonHtml('ranking', 'Ranking', 'Ranking');
+        html += quickButtonHtml('ranking', 'Player of the Series', 'POS');
       }
       // 写真まとめ(#74)
       if (hasPhotoFolders(state.category)) {
@@ -2759,8 +2761,9 @@
   function rankingViewHtml() {
     var cat = state.category;
     var d = rankingData[cat];
-    // 見出しの副題はランキング名(「WOLF 2026 #02」「宴POS ver3」)。どの集計かが分かるように出す
-    var head = panelHeadHtml('close', 'Tournaments', 'Ranking', (d && d.name) || '');
+    /* 見出しはボタンと同じ呼び方にそろえる。副題は PokerLens 側のランキング名
+     * (「WOLF 2026 #02」「宴POS ver3」)で、どの集計を見ているかが分かるようにする。 */
+    var head = panelHeadHtml('close', 'Tournaments', 'Player of the Series', (d && d.name) || '');
     var st = rankingState[cat];
     if (st !== 'loaded') {
       return head + panelNote(st === 'error' ? 'Ranking is temporarily unavailable.' : 'Loading…');
