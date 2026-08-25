@@ -804,12 +804,9 @@ body[data-theme="wolf"] .status-pill.is-active {
   border-color: var(--accent);
 }
 
-/* 開いている画面のボタン(写真まとめ #74)。状況フィルタの選択中と同じ見せ方に揃える */
-.quick-link.is-active {
-  background: rgba(var(--accent-rgb), 0.24);
-  border-color: var(--accent);
-  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.35);
-}
+/* hidden 属性を効かせる。ブラウザ既定の [hidden]{display:none} は要素セレクタより弱く、
+ * 上の .quick-links{display:flex} に負けてしまう(実際に負けていて行が消えなかった)。 */
+.quick-links[hidden] { display: none; }
 
 /* ラベルは通常幅の長い方だけを出す(短い方はスマホ幅で入れ替える) */
 .quick-link .ql-label { overflow: hidden; text-overflow: ellipsis; }

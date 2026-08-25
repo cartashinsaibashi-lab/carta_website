@@ -1247,6 +1247,9 @@
 
   function render() {
     clearTimers();
+    /* クイックリンク行は中身も表示/非表示も state から決まるので、分岐の前に必ず作り直す。
+     * パネル側でだけ呼んでいると、閉じて一覧に戻ったときに隠れたままになる。 */
+    renderQuickLinks();
     /* 写真まとめを開いている間は大会一覧を作らない(#74)。
      * 同じ listEl を差し替えて使うので、ここで完全に分岐させる。 */
     if (state.photoView) { renderPhotoView(); return; }
@@ -2440,11 +2443,12 @@
     );
   }
 
-  // サイト内の画面を切り替えるボタン(写真まとめ #74)。遷移しないので a ではなく button
-  function quickButtonHtml(action, label, shortLabel, active) {
+  /* サイト内の画面を切り替えるボタン(写真まとめ #74 / ランキング #78)。
+   * 遷移しないので a ではなく button。開いている間は行ごと消えるため、
+   * 「選択中」の状態は持たせていない。 */
+  function quickButtonHtml(action, label, shortLabel) {
     return (
-      '<button class="quick-link' + (active ? ' is-active' : '') + '" type="button"' +
-      ' data-quick-action="' + esc(action) + '">' +
+      '<button class="quick-link" type="button" data-quick-action="' + esc(action) + '">' +
       quickLabels(label, shortLabel) +
       '</button>'
     );
@@ -2452,17 +2456,23 @@
 
   function renderQuickLinks() {
     if (!quickLinksEl) return;
+    /* パネル(写真まとめ #74 / ランキング #78)を開いている間は行ごと隠す。
+     * パネル内は「← Tournaments」が戻る導線で、開いている画面のボタンを出したままにしても
+     * 押す先が無い。フィルタバーは日付・状況フィルタも隠しているので、
+     * ここだけ残すと中途半端に 1 行だけ浮いた状態になる。 */
+    if (state.photoView || state.rankingOpen) { quickLinksEl.hidden = true; return; }
+
     var html = '';
     if (QUICK_LINK_CATEGORIES.indexOf(state.category) !== -1) {
       var links = siteLinks && siteLinks[state.category];
       if (links && links.guidePdf) html += quickLinkHtml(links.guidePdf, "Player's Guide", 'Guide');
       /* 合計ランキング(#78)。公開されていない種別では出さない */
       if (hasRanking(state.category)) {
-        html += quickButtonHtml('ranking', 'Ranking', 'Ranking', state.rankingOpen);
+        html += quickButtonHtml('ranking', 'Ranking', 'Ranking');
       }
       // 写真まとめ(#74)
       if (hasPhotoFolders(state.category)) {
-        html += quickButtonHtml('photos', 'Photos', 'Photos', !!state.photoView);
+        html += quickButtonHtml('photos', 'Photos', 'Photos');
       }
     }
     quickLinksEl.innerHTML = html;
@@ -2626,7 +2636,6 @@
       (state.photoView.folderId ? photoGridHtml(state.photoView.folderId) : photoFoldersHtml()) +
       '</div>';
     emptyEl.hidden = true;
-    renderQuickLinks();   // Photos ボタンの選択状態を合わせる
     syncOpenParam();      // ?photos= を URL に反映(通常の render() を通らないためここで呼ぶ)
   }
 
@@ -2789,7 +2798,6 @@
     document.body.dataset.view = 'ranking';   // 日付・状況フィルタを隠す(この画面では効かない)
     listEl.innerHTML = '<div class="panel-view">' + rankingViewHtml() + '</div>';
     emptyEl.hidden = true;
-    renderQuickLinks();   // Ranking ボタンの選択状態を合わせる
     syncOpenParam();      // ?ranking= を URL に反映(通常の render() を通らないためここで呼ぶ)
   }
 
@@ -2850,7 +2858,6 @@
       state.photoView = hasPhotoFolders(category) ? { folderId: null } : null;
     }
     applyCategoryUi(category);
-    renderQuickLinks();            // 種別ごとにリンクが変わる(#73)
     state.pickerOpen = false;
     renderMonthNav();
     renderDateStrip();
