@@ -304,6 +304,71 @@
     );
   }
 
+  /* ---------- Results の優勝 / FT 写真(#80) ----------
+   * 運営は Drive のファイル名で写真の種類を書き分けている(実データの調査で確認)。
+   * 表示するのは**拡張子を除いた名前が `_Win` / `_FT` で終わるもの**で、
+   * 見せたい 1 枚だけその名前にしてもらう運用(他の候補は `mt002_Win2` のように末尾を変える)。
+   * `mtNNN` は種類ごとの連番で大会の識別子ではない — 同じ大会に FT が 11 枚入ることもある。
+   *
+   * 実データ(2026-08-26 / 31 フォルダ)では Win がある大会は 13 件・FT は 10 件で、
+   * **大半の大会にはどちらも無い**。無いときはブロックごと出さない。 */
+
+  var WIN_RE = /_win$/i;
+  var FT_RE = /_ft$/i;
+
+  function baseName(name) {
+    return String(name || '').replace(/\.[^.]+$/, '');
+  }
+
+  /* 条件に合う写真の **ev.photos 上の位置**を返す(無ければ -1)。
+   * 位置を返すのは、押したときに既存のビューアで一覧の続きとして開けるようにするため。
+   *
+   * 規約では 1 枚のはずだが、複数残っていても壊さずファイル名の自然順で先頭を採る。
+   * ev.photos の並びは撮影日時順のことがある(EXIF が全ファイルに入っている場合)ので、
+   * 配列の順ではなく名前で選び直す。 */
+  function pickResultPhoto(photos, re) {
+    var hits = [];
+    for (var i = 0; i < photos.length; i++) {
+      if (re.test(baseName(photos[i].name))) hits.push(i);
+    }
+    if (!hits.length) return -1;
+    hits.sort(function (a, b) {
+      return photos[a].name.localeCompare(photos[b].name, undefined, { numeric: true });
+    });
+    if (hits.length > 1 && window.console && console.warn) {
+      console.warn('[carta] 同じ種類の写真が複数あります。先頭を表示します: ' +
+        hits.map(function (i) { return photos[i].name; }).join(' / '));
+    }
+    return hits[0];
+  }
+
+  /* In the Money と順位表の間に置く 2 枚(左=優勝 / 右=FT)。
+   * ラベルは出さない(運営の指定)。片方しか無い大会は 1 枚だけ出し、空の枠は作らない。
+   * **通過日には出さない** — その日の優勝者はまだ居ないため(実データでも Day 1 の
+   * フォルダには Win / FT が 1 枚も入っていない)。 */
+  function resultPhotosHtml(ev) {
+    if (ev.carryOver) return '';
+    var photos = ev.photos || [];
+    if (!photos.length) return '';
+
+    var picked = [pickResultPhoto(photos, WIN_RE), pickResultPhoto(photos, FT_RE)]
+      .filter(function (i) { return i >= 0; });
+    if (!picked.length) return '';
+
+    var items = picked.map(function (i) {
+      var p = photos[i];
+      /* data-photo は ev.photos 上の位置。Photos タブのサムネイルと同じ約束にしてあるので、
+       * listEl の委譲リスナーがそのまま拡大表示を開ける。 */
+      return (
+        '<button class="photo-thumb" type="button" data-photo="' + i + '" aria-label="' + esc(p.name) + '">' +
+        '<img src="' + esc(p.thumb2x) + '" alt="' + esc(p.name) + '" loading="lazy" decoding="async">' +
+        '</button>'
+      );
+    }).join('');
+
+    return '<div class="photo-grid result-photos" data-photo-event="' + esc(ev.id) + '">' + items + '</div>';
+  }
+
   function resultsPanel(ev) {
     /* 通過日は入賞者がまだ決まっていないので In the Money を出さず、
      * 代わりに「翌日へ進む人数」を Remaining として出す(運営の指定)。
@@ -321,7 +386,7 @@
       '</div>';
 
     /* 通過日(日をまたぐ大会の最終日以外)は賞金ではなく翌日へ持ち込むチップを出す。 */
-    return summary + (ev.carryOver ? carryOverTable(ev) : finalResultTable(ev));
+    return summary + resultPhotosHtml(ev) + (ev.carryOver ? carryOverTable(ev) : finalResultTable(ev));
   }
 
   /* 通過日の結果表(Rank / Player / Chips)。
