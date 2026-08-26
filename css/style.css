@@ -804,12 +804,9 @@ body[data-theme="wolf"] .status-pill.is-active {
   border-color: var(--accent);
 }
 
-/* 開いている画面のボタン(写真まとめ #74)。状況フィルタの選択中と同じ見せ方に揃える */
-.quick-link.is-active {
-  background: rgba(var(--accent-rgb), 0.24);
-  border-color: var(--accent);
-  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.35);
-}
+/* hidden 属性を効かせる。ブラウザ既定の [hidden]{display:none} は要素セレクタより弱く、
+ * 上の .quick-links{display:flex} に負けてしまう(実際に負けていて行が消えなかった)。 */
+.quick-links[hidden] { display: none; }
 
 /* ラベルは通常幅の長い方だけを出す(短い方はスマホ幅で入れ替える) */
 .quick-link .ql-label { overflow: hidden; text-overflow: ellipsis; }
@@ -1598,7 +1595,8 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 /* 結果表・賞金表も横スクロールなしで画面幅に収める:
  * 最小幅指定を外し、選手名の列だけ折り返す(数値列は nowrap のまま詰めて収める)。 */
 .data-table.results-table,
-.data-table.prize-table {
+.data-table.prize-table,
+.data-table.ranking-table {
   min-width: 0;
   width: 100%;
   font-variant-numeric: tabular-nums;
@@ -1607,22 +1605,29 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 .data-table.results-table th,
 .data-table.results-table td,
 .data-table.prize-table th,
-.data-table.prize-table td {
+.data-table.prize-table td,
+.data-table.ranking-table th,
+.data-table.ranking-table td {
   padding: 9px 8px;
 }
 
 .data-table.results-table th:first-child,
 .data-table.results-table td:first-child,
 .data-table.prize-table th:first-child,
-.data-table.prize-table td:first-child { padding-left: 12px; }
+.data-table.prize-table td:first-child,
+.data-table.ranking-table th:first-child,
+.data-table.ranking-table td:first-child { padding-left: 12px; }
 
 .data-table.results-table th:last-child,
 .data-table.results-table td:last-child,
 .data-table.prize-table th:last-child,
-.data-table.prize-table td:last-child { padding-right: 12px; }
+.data-table.prize-table td:last-child,
+.data-table.ranking-table th:last-child,
+.data-table.ranking-table td:last-child { padding-right: 12px; }
 
 /* 選手名は折り返し可(長い名前でも横スクロールさせない) */
-.results-table .col-player {
+.results-table .col-player,
+.ranking-table .col-player {
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.35;
@@ -1733,7 +1738,28 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 
 body[data-theme="wolf"] .summary-value { font-style: italic; }
 
-.results-table .col-pos { width: 2.8em; text-align: center; font-weight: 700; }
+.results-table .col-pos,
+.ranking-table .col-pos { width: 2.8em; text-align: center; font-weight: 700; }
+
+/* ランキングの数値列。ポイントは小数が出る(46.8 / 83.2)ので右寄せで桁を揃える。
+ * 参加大会数は補助情報なので、ポイントより弱いトーンにする。 */
+.ranking-table .col-points {
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.ranking-table .col-events {
+  text-align: right;
+  width: 4.5em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.ranking-table th:nth-child(3),
+.ranking-table th:nth-child(4) { text-align: right; }
 
 .pos-medal {
   display: inline-grid;
@@ -1768,6 +1794,10 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 }
 
 .row-winner .col-player { color: var(--accent-bright); font-weight: 700; }
+
+/* ランキング表の 1 位だけは単色にする。上のグラデーションは td ごとに描き直されるので、
+ * 選手名の列が広いランキング表(4 列で幅の差が大きい)ではセル境界で縞に見えるため。 */
+.ranking-table .row-winner td { background: rgba(var(--accent-rgb), 0.13); }
 
 /* ---------- 賞金分配(Prize)パネル ---------- */
 
@@ -2832,21 +2862,21 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   line-height: 1;
 }
 
-/* ---------- 写真まとめ画面(#74) ----------
- * クイックリンクの Photos から開く、大会一覧と同じ場所に出るインラインパネル。
- * 日付・状況フィルタはこの画面では効かないので、開いている間は隠す
- * (フィルタバーは残す — クイックリンクから Player's Guide へ移れるようにするため)。 */
+/* ---------- 一覧を差し替えるパネル(写真まとめ #74 / ランキング #78) ----------
+ * クイックリンクから開く、大会一覧と同じ場所に出るインラインパネル。
+ * 日付・状況フィルタはこれらの画面では効かないので、開いている間は隠す
+ * (フィルタバーは残す — クイックリンクで別のパネルへ移れるようにするため)。 */
 
-body[data-view="photos"] .date-strip,
-body[data-view="photos"] .status-filter { display: none; }
+body[data-view] .date-strip,
+body[data-view] .status-filter { display: none; }
 
-.photo-view {
+.panel-view {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.photo-view-head {
+.panel-head {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -2855,7 +2885,7 @@ body[data-view="photos"] .status-filter { display: none; }
   border-bottom: 1px solid var(--border);
 }
 
-.photo-back {
+.panel-back {
   flex: 0 0 auto;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -2867,9 +2897,9 @@ body[data-view="photos"] .status-filter { display: none; }
   transition: all .2s;
 }
 
-.photo-back:hover { border-color: var(--accent); color: var(--accent-bright); }
+.panel-back:hover { border-color: var(--accent); color: var(--accent-bright); }
 
-.photo-view-title {
+.panel-title {
   font-size: 15px;
   font-weight: 700;
   color: var(--text);
@@ -2878,13 +2908,13 @@ body[data-view="photos"] .status-filter { display: none; }
   overflow-wrap: anywhere;
 }
 
-.photo-view-sub {
+.panel-sub {
   font-size: 12.5px;
   color: var(--text-faint);
   letter-spacing: 0.04em;
 }
 
-.photo-view-note { padding: 12px 2px; }
+.panel-note { padding: 12px 2px; }
 
 /* フォルダ一覧。表紙画像は出さない(何十件も並ぶので開いた瞬間の読み込みが重くなる)ため、
  * 情報は大会名と開催日だけ。押せる行だと分かるようカードと同じ地色・枠にしている。 */
@@ -3102,8 +3132,8 @@ body[data-view="photos"] .status-filter { display: none; }
     padding: 10px 12px;
   }
 
-  .photo-view-head { gap: 8px; }
-  .photo-view-title { font-size: 14px; }
+  .panel-head { gap: 8px; }
+  .panel-title { font-size: 14px; }
 
   /* カード: コンパクト表示 */
   .card-expand { padding: 5px 12px; gap: 8px; }

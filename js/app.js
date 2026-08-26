@@ -28,7 +28,8 @@
     seatListOpen: true,                 // 着席者一覧の開閉(同じくライブ更新をまたいで保持)
     /* 写真まとめ画面(#74)。null = 大会一覧 /
      * { folderId: null } = フォルダ一覧 / { folderId: '...' } = そのフォルダの写真グリッド */
-    photoView: null
+    photoView: null,
+    rankingOpen: false                  // 合計ランキングのパネル(#78)を開いているか
   };
 
   /* ---------- お気に入り / 申込状態(モックでは localStorage に保存) ----------
@@ -1246,9 +1247,13 @@
 
   function render() {
     clearTimers();
+    /* クイックリンク行は中身も表示/非表示も state から決まるので、分岐の前に必ず作り直す。
+     * パネル側でだけ呼んでいると、閉じて一覧に戻ったときに隠れたままになる。 */
+    renderQuickLinks();
     /* 写真まとめを開いている間は大会一覧を作らない(#74)。
      * 同じ listEl を差し替えて使うので、ここで完全に分岐させる。 */
     if (state.photoView) { renderPhotoView(); return; }
+    if (state.rankingOpen) { renderRankingView(); return; }
     document.body.removeAttribute('data-view');
     var events = visibleEvents();
     listEl.innerHTML = listHtml(events);
@@ -1327,9 +1332,10 @@
     Array.prototype.push.apply(MOCK_EVENTS, merged);
 
     updateCounts();
-    /* 写真まとめを開いている間は描き直さない(#74)。表示しているのは写真パネルで、
-     * 作り直すとスクロール位置が戻る。一覧のデータ自体は上でマージ済み。 */
-    if (state.photoView) return;
+    /* パネル(写真まとめ #74 / ランキング #78)を開いている間は描き直さない。
+     * 表示しているのは一覧ではないので、作り直すとスクロール位置が戻るだけ。
+     * 一覧のデータ自体は上でマージ済み。 */
+    if (state.photoView || state.rankingOpen) return;
     if (visibleEvents().map(function (e) { return e.id; }).join(',') !== beforeIds) {
       renderKeepingView();   // カードが増減した / 並びが変わった場合だけ描き直す
     } else {
@@ -1410,6 +1416,9 @@
        * (フォルダのグリッドか、その種別のフォルダ一覧か)。 */
       if (state.photoView) params.set(PHOTOS_PARAM, state.photoView.folderId || state.category);
       else params.delete(PHOTOS_PARAM);
+      // ランキング(#78)は種別ごとに 1 つなので、値は種別だけでよい
+      if (state.rankingOpen) params.set(RANKING_PARAM, state.category);
+      else params.delete(RANKING_PARAM);
       var qs = params.toString();
       history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     } catch (e) { /* file:// 等で replaceState 不可の場合は無視 */ }
@@ -2434,11 +2443,12 @@
     );
   }
 
-  // サイト内の画面を切り替えるボタン(写真まとめ #74)。遷移しないので a ではなく button
-  function quickButtonHtml(action, label, shortLabel, active) {
+  /* サイト内の画面を切り替えるボタン(写真まとめ #74 / ランキング #78)。
+   * 遷移しないので a ではなく button。開いている間は行ごと消えるため、
+   * 「選択中」の状態は持たせていない。 */
+  function quickButtonHtml(action, label, shortLabel) {
     return (
-      '<button class="quick-link' + (active ? ' is-active' : '') + '" type="button"' +
-      ' data-quick-action="' + esc(action) + '">' +
+      '<button class="quick-link" type="button" data-quick-action="' + esc(action) + '">' +
       quickLabels(label, shortLabel) +
       '</button>'
     );
@@ -2446,14 +2456,25 @@
 
   function renderQuickLinks() {
     if (!quickLinksEl) return;
+    /* パネル(写真まとめ #74 / ランキング #78)を開いている間は行ごと隠す。
+     * パネル内は「← Tournaments」が戻る導線で、開いている画面のボタンを出したままにしても
+     * 押す先が無い。フィルタバーは日付・状況フィルタも隠しているので、
+     * ここだけ残すと中途半端に 1 行だけ浮いた状態になる。 */
+    if (state.photoView || state.rankingOpen) { quickLinksEl.hidden = true; return; }
+
     var html = '';
     if (QUICK_LINK_CATEGORIES.indexOf(state.category) !== -1) {
       var links = siteLinks && siteLinks[state.category];
       if (links && links.guidePdf) html += quickLinkHtml(links.guidePdf, "Player's Guide", 'Guide');
-      /* 写真まとめ(#74)。フォルダが 1 つも無い種別では出さない
-       * (押しても空の一覧しか出ないため)。 */
-      if (categoryFolders(state.category).length) {
-        html += quickButtonHtml('photos', 'Photos', 'Photos', !!state.photoView);
+      /* 合計ランキング(#78)。公開されていない種別では出さない。
+       * ラベルは運営の呼び方に合わせて「Player of the Series」。スマホ幅の短縮形 POS も
+       * 運営表記そのもので、PokerLens 側のランキング名(「宴POS ver3」)と同じ略語。 */
+      if (hasRanking(state.category)) {
+        html += quickButtonHtml('ranking', 'Player of the Series', 'POS');
+      }
+      // 写真まとめ(#74)
+      if (hasPhotoFolders(state.category)) {
+        html += quickButtonHtml('photos', 'Photos', 'Photos');
       }
     }
     quickLinksEl.innerHTML = html;
@@ -2506,6 +2527,13 @@
       .sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
   }
 
+  /* 写真まとめを出せる種別か。**クイックリンク行を出す種別(Wolf / 宴)に限る** —
+   * 歌留多の写真は各大会カードの Photos タブからのみ見せる運用(#74)。
+   * フォルダが 1 つも無い種別でも出さない(押しても空の一覧しか出ないため)。 */
+  function hasPhotoFolders(category) {
+    return QUICK_LINK_CATEGORIES.indexOf(category) !== -1 && categoryFolders(category).length > 0;
+  }
+
   function findPhotoFolder(id) {
     var list = photoFolders || [];
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
@@ -2547,32 +2575,33 @@
       .then(done);
   }
 
-  /* パネル上部の見出し。戻り先は「グリッド → フォルダ一覧」「フォルダ一覧 → 大会一覧」で
-   * 変わるので、戻り先とラベルを引数で受ける。 */
-  function photoViewHeadHtml(backAction, backLabel, title, sub) {
+  /* 一覧を差し替えるパネル(写真まとめ #74 / ランキング #78)共通の見出し。
+   * 戻り先は「グリッド → フォルダ一覧」「フォルダ一覧 → 大会一覧」のように変わるので、
+   * 戻り先とラベルを引数で受ける。 */
+  function panelHeadHtml(backAction, backLabel, title, sub) {
     return (
-      '<div class="photo-view-head">' +
-      '<button class="photo-back" type="button" data-photo-view="' + esc(backAction) + '">' +
+      '<div class="panel-head">' +
+      '<button class="panel-back" type="button" data-panel-back="' + esc(backAction) + '">' +
       '\u2190 ' + esc(backLabel) + '</button>' +
-      '<span class="photo-view-title">' + esc(title) + '</span>' +
-      (sub ? '<span class="photo-view-sub">' + esc(sub) + '</span>' : '') +
+      '<span class="panel-title">' + esc(title) + '</span>' +
+      (sub ? '<span class="panel-sub">' + esc(sub) + '</span>' : '') +
       '</div>'
     );
   }
 
-  function photoNote(text) {
-    return '<p class="reg-note photo-view-note">' + esc(text) + '</p>';
+  function panelNote(text) {
+    return '<p class="reg-note panel-note">' + esc(text) + '</p>';
   }
 
   function photoFoldersHtml() {
-    var head = photoViewHeadHtml('close', 'Tournaments', 'Photos', '');
+    var head = panelHeadHtml('close', 'Tournaments', 'Photos', '');
     if (photoFoldersState !== 'loaded') {
-      return head + photoNote(photoFoldersState === 'error'
+      return head + panelNote(photoFoldersState === 'error'
         ? 'Photos are temporarily unavailable.' : 'Loading…');
     }
 
     var folders = categoryFolders(state.category);
-    if (!folders.length) return head + photoNote('No photos have been published yet.');
+    if (!folders.length) return head + panelNote('No photos have been published yet.');
 
     var items = folders.map(function (f) {
       return (
@@ -2587,13 +2616,13 @@
 
   function photoGridHtml(folderId) {
     var f = findPhotoFolder(folderId);
-    var head = photoViewHeadHtml('folders', 'Photos', f ? (f.title || f.name) : 'Photos', f ? f.date : '');
+    var head = panelHeadHtml('folders', 'Photos', f ? (f.title || f.name) : 'Photos', f ? f.date : '');
     var st = folderPhotosState[folderId];
     if (st !== 'loaded') {
-      return head + photoNote(st === 'error' ? 'Photos are temporarily unavailable.' : 'Loading…');
+      return head + panelNote(st === 'error' ? 'Photos are temporarily unavailable.' : 'Loading…');
     }
     var photos = folderPhotos[folderId] || [];
-    if (!photos.length) return head + photoNote('No photos in this folder yet.');
+    if (!photos.length) return head + panelNote('No photos in this folder yet.');
     return (
       head +
       '<div class="photo-grid" data-photo-folder="' + esc(folderId) + '">' +
@@ -2605,11 +2634,10 @@
   function renderPhotoView() {
     document.body.dataset.view = 'photos';   // 日付・状況フィルタを隠す(この画面では効かないため)
     listEl.innerHTML =
-      '<div class="photo-view">' +
+      '<div class="panel-view">' +
       (state.photoView.folderId ? photoGridHtml(state.photoView.folderId) : photoFoldersHtml()) +
       '</div>';
     emptyEl.hidden = true;
-    renderQuickLinks();   // Photos ボタンの選択状態を合わせる
     syncOpenParam();      // ?photos= を URL に反映(通常の render() を通らないためここで呼ぶ)
   }
 
@@ -2617,6 +2645,7 @@
    * データが届く前に枠だけ先に描くのは、押した直後に何も起きないように見せないため。 */
   function openPhotoView(folderId) {
     state.photoView = { folderId: folderId || null };
+    state.rankingOpen = false;  // パネルは同時に 1 つだけ
     state.openedId = null;      // 一覧のカードは閉じる(表示そのものが入れ替わるため)
     stopLivePolling();
     render();
@@ -2624,8 +2653,11 @@
     ensurePhotoData();
   }
 
-  function closePhotoView() {
+  /* どのパネルが開いていても閉じて大会一覧に戻す。
+   * 戻るボタンは共通なので、閉じ方も 1 か所にまとめてある。 */
+  function closePanel() {
     state.photoView = null;
+    state.rankingOpen = false;
     render();
   }
 
@@ -2638,8 +2670,9 @@
       if (!v.folderId) { render(); return; }
 
       var f = findPhotoFolder(v.folderId);
-      /* 消されたフォルダを指す古いリンク。空の画面を見せず一覧に戻す */
-      if (!f) { closePhotoView(); return; }
+      /* 消されたフォルダを指す古いリンクや、写真まとめを出さない種別(歌留多)の
+       * フォルダを指すリンク。UI から辿れない画面を URL だけで出さないよう一覧に戻す。 */
+      if (!f || !hasPhotoFolders(f.category)) { closePanel(); return; }
       /* 直リンク(?photos=<フォルダID>)では、フォルダの種別が索引の到着で初めて分かる。
        * ヘッダーのタブとテーマをそのフォルダの種別に合わせる。 */
       if (f.category !== state.category) applyCategoryUi(f.category);
@@ -2669,9 +2702,9 @@
   }
 
   listEl.addEventListener('click', function (e) {
-    var back = e.target.closest('[data-photo-view]');
+    var back = e.target.closest('[data-panel-back]');
     if (back) {
-      if (back.dataset.photoView === 'close') closePhotoView();
+      if (back.dataset.panelBack === 'close') closePanel();
       else openPhotoView(null);
       return;
     }
@@ -2681,8 +2714,125 @@
 
   if (quickLinksEl) {
     quickLinksEl.addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-quick-action="photos"]');
-      if (btn) openPhotoView(null);
+      var btn = e.target.closest('[data-quick-action]');
+      if (!btn) return;
+      if (btn.dataset.quickAction === 'photos') openPhotoView(null);
+      else if (btn.dataset.quickAction === 'ranking') openRankingView();
+    });
+  }
+
+  /* ---------- 合計ランキング(#78) ----------
+   * クイックリンクの Ranking から開く、大会一覧を差し替えるインラインパネル。
+   * 集計は PokerLens 側にあり、こちらは並べるだけ(/api/ranking/:category)。
+   *
+   * 種別ごとに 1 つなので、URL は ?ranking=<種別> だけで復元できる。
+   * 種別タブは残したまま切り替えられ、切り替えるとその種別のランキングに差し替わる。 */
+
+  var RANKING_PARAM = 'ranking';
+
+  var rankingData = {};    // category → { name, rows }
+  var rankingState = {};   // category → 'loading' | 'loaded' | 'error'
+
+  // ランキングが公開されているか。/api/site-links の ranking(名前と登録者数)で判断する
+  function hasRanking(category) {
+    var links = siteLinks && siteLinks[category];
+    return !!(links && links.ranking);
+  }
+
+  /* 順位表の取得。種別ごとに 1 回だけ取り、結果は保持する
+   * (実データで 218〜480 行あるので、種別を行き来するたびに取り直さない)。 */
+  function loadRanking(category, onDone) {
+    var done = function () { if (onDone) onDone(); };
+    if (rankingState[category] === 'loaded') { done(); return; }
+    if (window.__CARTA_DATA_SOURCE__ !== 'api') { done(); return; }
+
+    rankingState[category] = 'loading';
+    fetch('/api/ranking/' + encodeURIComponent(category), { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        rankingData[category] = d && !d.error ? d : { name: null, rows: [] };
+        rankingState[category] = 'loaded';
+      })
+      /* 失敗しても表が出ないだけ。状態を error にして次に開いたとき再試行させる */
+      .catch(function () { rankingState[category] = 'error'; })
+      .then(done);
+  }
+
+  function rankingViewHtml() {
+    var cat = state.category;
+    var d = rankingData[cat];
+    /* 見出しはボタンと同じ呼び方にそろえる。副題は PokerLens 側のランキング名
+     * (「WOLF 2026 #02」「宴POS ver3」)で、どの集計を見ているかが分かるようにする。 */
+    var head = panelHeadHtml('close', 'Tournaments', 'Player of the Series', (d && d.name) || '');
+    var st = rankingState[cat];
+    if (st !== 'loaded') {
+      return head + panelNote(st === 'error' ? 'Ranking is temporarily unavailable.' : 'Loading…');
+    }
+
+    var rows = (d && d.rows) || [];
+    if (!rows.length) return head + panelNote('No ranking has been published yet.');
+
+    var body = rows.map(function (r) {
+      var posCls = r.rank === 1 ? ' class="row-winner"' : '';
+      var medalCls = r.rank <= 3 ? ' pos-' + r.rank : '';
+      return (
+        '<tr' + posCls + '>' +
+        '<td class="col-pos"><span class="pos-medal' + medalCls + '">' + r.rank + '</span></td>' +
+        /* ニックネーム未登録の選手は BFF が description のイニシャル表記に置き換えて返す。
+         * それも空なら「—」— 本名は出さない(全員 privacyAgree: false)。 */
+        '<td class="col-player">' + esc(r.name || '\u2014') + '</td>' +
+        // ポイントは整数とは限らない(46.8 / 83.2)ので丸めずそのまま出す
+        '<td class="col-points">' + num(r.points) + '</td>' +
+        '<td class="col-events">' + num(r.events) + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    return (
+      head +
+      '<div class="table-scroll"><table class="data-table ranking-table">' +
+      '<thead><tr><th>Rank</th><th>Player</th><th>Points</th><th>Events</th></tr></thead>' +
+      '<tbody>' + body + '</tbody>' +
+      '</table></div>'
+    );
+  }
+
+  function renderRankingView() {
+    document.body.dataset.view = 'ranking';   // 日付・状況フィルタを隠す(この画面では効かない)
+    listEl.innerHTML = '<div class="panel-view">' + rankingViewHtml() + '</div>';
+    emptyEl.hidden = true;
+    syncOpenParam();      // ?ranking= を URL に反映(通常の render() を通らないためここで呼ぶ)
+  }
+
+  function openRankingView() {
+    state.rankingOpen = true;
+    state.photoView = null;     // パネルは同時に 1 つだけ
+    state.openedId = null;
+    stopLivePolling();
+    render();
+    window.scrollTo(0, 0);
+    ensureRankingData();
+  }
+
+  /* 表示中の種別の順位表を取りに行き、届いたら描き直す。
+   * 取得を待つ間に閉じたり種別を変えたりしていることがあるので、反映前に見直す。 */
+  function ensureRankingData() {
+    var cat = state.category;
+    loadRanking(cat, function () {
+      if (state.rankingOpen && state.category === cat) render();
+    });
+  }
+
+  /* 初回表示時、?ranking=<種別> が指定されていればランキングを開いた状態にする。 */
+  function applyRankingParam() {
+    var v = new URLSearchParams(location.search).get(RANKING_PARAM);
+    if (!v || QUICK_LINK_CATEGORIES.indexOf(v) === -1) return;
+    state.category = v;
+    state.rankingOpen = true;
+    state.photoView = null;
+    state.openedId = null;
+    document.querySelectorAll('.category-tab').forEach(function (t) {
+      t.classList.toggle('is-active', t.dataset.category === v);
     });
   }
 
@@ -2701,17 +2851,21 @@
 
   /* 種別の切り替え。ヘッダーのタブと、初回表示の選択画面の両方から呼ぶ。 */
   function selectCategory(category) {
-    /* 種別を切り替えたら写真まとめは閉じて大会一覧に戻す(#74)。
-     * 開いたまま中身だけ差し替えると、Photos を出さない歌留多に切り替えたときに
-     * 「戻る導線が無いまま写真画面が残る」状態になるため。 */
-    state.photoView = null;
     state.openedId = null;
+    /* パネルを開いたまま種別を切り替えたときは、**その種別の内容に差し替える**(#78)。
+     * ただし出せるものが無い種別(歌留多にはランキングも写真もある種別フォルダも無い)では
+     * 閉じて一覧に戻す — 戻る導線が無いまま空のパネルが残るのを防ぐため。
+     * 写真は種別をまたぐとフォルダ ID が意味を持たないので、フォルダ一覧の段まで戻す。 */
+    if (state.rankingOpen && !hasRanking(category)) state.rankingOpen = false;
+    if (state.photoView) {
+      state.photoView = hasPhotoFolders(category) ? { folderId: null } : null;
+    }
     applyCategoryUi(category);
-    renderQuickLinks();            // 種別ごとにリンクが変わる(#73)
     state.pickerOpen = false;
     renderMonthNav();
     renderDateStrip();
     render();
+    if (state.rankingOpen) ensureRankingData();   // 切替先の順位表を取りに行く(#78)
   }
 
   document.getElementById('categoryTabs').addEventListener('click', function (e) {
@@ -2726,9 +2880,10 @@
   function setupCategoryGate() {
     var gate = document.getElementById('categoryGate');
     if (!gate) return;
-    /* 直リンク(?event= / ?photos=)では見たい画面が決まっているので選択画面は出さない */
+    /* 直リンク(?event= / ?photos= / ?ranking=)では見たい画面が決まっているので
+     * 選択画面は出さない */
     var params = new URLSearchParams(location.search);
-    if (params.get(OPEN_PARAM) || params.get(PHOTOS_PARAM)) return;
+    if (params.get(OPEN_PARAM) || params.get(PHOTOS_PARAM) || params.get(RANKING_PARAM)) return;
 
     gate.hidden = false;
     document.body.classList.add('gate-open'); // 背後をスクロールさせない
@@ -2843,6 +2998,7 @@
 
   applyOpenParam();               // ?event=<id> があれば該当カードを開いた状態で表示
   applyPhotoParam();              // ?photos=<フォルダID|種別> があれば写真まとめを開く(#74)
+  applyRankingParam();            // ?ranking=<種別> があればランキングを開く(#78)
   applyTheme(state.category);
   // 取得失敗時は空表示 + 障害メッセージ(ダミーデータは出さない)
   if (window.__CARTA_DATA_SOURCE__ === 'error' && emptyEl) {
@@ -2857,6 +3013,7 @@
    * 直リンクで写真まとめを開いている場合は、続けて中身の取得まで進める。 */
   if (state.photoView) ensurePhotoData();
   else loadPhotoFolders(renderQuickLinks);
+  if (state.rankingOpen) ensureRankingData();   // 直リンクで開いた順位表(#78)
   ensureCountdownTicker();         // STARTS IN / REG CLOSE IN のカウントダウン開始
   startListPolling();              // 一覧を 60 秒ごとに取り直す(#60)
   if (state.openedId) {

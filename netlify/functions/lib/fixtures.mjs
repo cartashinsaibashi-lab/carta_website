@@ -792,6 +792,78 @@ const MOCK_SUMMARY_POINTS = MOCK_POINTS.concat([
   [15, 18.2], [16, 15.6], [17, 13], [18, 10.4],
 ]);
 
+/* 種別ごとのランキング(#78)。実データと同じく**宴だけ 2 つある**
+ * (旧版 ver2 は登録 0 名)。種別 → ランキングの選び方(空を除いて期間が新しい方)が
+ * ローカルでも通るように、わざと 3 件そろえてある。 */
+const RANKING_UTAGE_ID = 'rk-utage-pos-v3';
+const RANKING_UTAGE_OLD_ID = 'rk-utage-pos-v2';
+
+/* 順位表の中身。実データの癖を再現する:
+ *   - position は { index, events, points } のオブジェクト(スカラーではない)
+ *   - points は整数とは限らない(46.8 など)
+ *   - nickname が空の選手がいる(live の宴で 480 名中 19 名)。その場合は
+ *     description のイニシャル表記(「Y. Y.」)にフォールバックする経路を通す
+ *   - privacyAgree は全員 false(本名は出さない) */
+const MOCK_RANKING_PLAYERS = {
+  [RANKING_ID]: [
+    ['Nine', 'Y. Y.', 500, 1],
+    ['こじたん', 'K. O.', 490, 2],
+    ['負野プロ', 'T. O.', 430, 2],
+    ['ミヤモト', 'K. W.', 420, 2],
+    ['うらら', 'T. N.', 398, 2],
+    ['@suu_7v', 'S. S.', 390, 1],
+    ['', 'D. F.', 350.6, 3],      // nickname 未登録 → イニシャル表記になる
+    ['yasu', 'Y. M.', 83.2, 1],
+    ['カルタ太郎', 'T. K.', 46.8, 1],
+  ],
+  [RANKING_UTAGE_ID]: [
+    ['HAYATO', 'H. Y.', 66, 8],
+    ['ベビーフェイス', 'S. K.', 47, 9],
+    ['JIN', 'J. U.', 45, 9],
+    ['Kongsoo', 'K. Y.', 45, 7],
+    ['', 'K. N.', 43, 8],         // nickname 未登録
+    ['てぃむ', 'T. M.', 36.4, 7],
+    ['JOKER KING', 'T. Y.', 34, 7],
+  ],
+  [RANKING_UTAGE_OLD_ID]: [],     // 旧版は空(選ばれないことの確認用)
+};
+
+function rankingSummary(id, name, start, end, events) {
+  return {
+    id,
+    name,
+    code: null,
+    behaviour: { startDate: start, endDate: end, eventCount: 0, sex: 'none' },
+    stats: { totalEvents: events, totalPlayers: (MOCK_RANKING_PLAYERS[id] || []).length },
+    venue: { id: VENUE.id, name: VENUE.name },
+    periods: [],
+    rewards: [],
+  };
+}
+
+function rankingPlayers(id) {
+  return (MOCK_RANKING_PLAYERS[id] || []).map(([nickname, description, points, events], i) => ({
+    id: `${id}-p${i + 1}`,
+    player: {
+      description,
+      id: `${id}-player-${i + 1}`,
+      lastname: 'Yamada',
+      firstname: 'Taro',
+      nickname,
+      privacyAgree: false,
+      connectStatus: { code: 'none', requestedAt: null, rejectReason: null },
+    },
+    inTheMoneyCount: 1,
+    finalTableCount: 1,
+    winsCount: i === 0 ? 1 : 0,
+    totalWinAmount: 0,
+    position: { index: i + 1, events, points },
+    previous: { index: 0, events: 0, points: 0 },
+    positionVariation: 0,
+    pointsVariation: points,
+  }));
+}
+
 function rankingRow(position, points, refId, description) {
   return {
     date: '2026-05-28T13:00:00',
@@ -845,18 +917,26 @@ export function mockRequest(method, path, body) {
 
   // --- ランキング ---
   if (method === 'POST' && path === '/v1/ranking/search') {
+    /* 実データと同じ 3 件。宴は ver2(空・古い)と ver3(現行)が併存していて、
+     * 種別 → ランキングの選び方(#78)をローカルでも試せるようにしてある。 */
+    const results = [
+      rankingSummary(RANKING_ID, 'WOLF 2026 #02', '2026-05-27T00:00:00', '2026-06-01T00:00:00', 1),
+      rankingSummary(RANKING_UTAGE_OLD_ID, '宴POS ver2', '2026-03-12T00:00:00', '2026-03-16T00:00:00', 0),
+      rankingSummary(RANKING_UTAGE_ID, '宴POS ver3', '2026-07-30T00:00:00', '2026-08-03T00:00:00', 19),
+    ];
     return {
-      pageNumber: 1, pageSize: 1, totalNumberOfRecords: 1, totalNumberOfPages: 1,
-      results: [{
-        id: RANKING_ID,
-        name: 'WOLF 2026 #02',
-        code: null,
-        behaviour: { startDate: '2026-05-27T00:00:00', endDate: '2026-06-01T00:00:00', eventCount: 0, sex: 'none' },
-        stats: { totalEvents: 1, totalPlayers: MOCK_POINTS.length },
-        venue: { id: VENUE.id, name: VENUE.name },
-        periods: [],
-        rewards: [],
-      }],
+      pageNumber: 1, pageSize: results.length, totalNumberOfRecords: results.length,
+      totalNumberOfPages: 1, results,
+    };
+  }
+
+  // POST /v1/ranking/{id}/players — 順位表(#78)
+  const rp = path.match(/^\/v1\/ranking\/([^/]+)\/players$/);
+  if (method === 'POST' && rp) {
+    const list = rankingPlayers(rp[1]);
+    return {
+      pageNumber: 1, pageSize: list.length, totalNumberOfRecords: list.length,
+      totalNumberOfPages: 1, results: list,
     };
   }
   if (method === 'POST' && path === `/v1/ranking/${RANKING_ID}/points`) {
