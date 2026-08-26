@@ -1005,7 +1005,7 @@ export function mockDriveFolders(parentId) {
 // (グリッドの折り返しと、1 枚しかない場合の見え方を両方確認できるように)。
 export function mockDriveImages(folderId) {
   const n = (hashCode(folderId) % 9) + 4;
-  return Array.from({ length: n }, (_, i) => {
+  const files = Array.from({ length: n }, (_, i) => {
     // 3 枚に 1 枚は縦写真。グリッドが縦横混在で崩れないことを確認するため
     const portrait = i % 3 === 2;
     return {
@@ -1020,6 +1020,29 @@ export function mockDriveImages(folderId) {
       },
     };
   });
+
+  /* Results に出す優勝 / FT 写真(#80)。運営の実データと同じ命名規約
+   * (拡張子を除いた名前が mtNNN_Win / mtNNN_FT で終わる)にしてある。
+   * フォルダによって「両方ある」「Win だけ」「どちらも無い」の 3 通りが出るようにして、
+   * 出し分けをローカルで確認できるようにする。実データでも 31 フォルダ中
+   * Win あり 13 件・FT あり 10 件・「Win だけ」3 件で、無い大会のほうが多い。 */
+  const shot = (name, i) => ({
+    id: `${folderId}-${name}`,
+    name,
+    mimeType: 'image/jpeg',
+    imageMediaMetadata: { width: 2048, height: 1365, time: `2026:05:27 2${i}:00:00` },
+  });
+  /* 「両方ある」ケースは終了済みの単日大会(Sunday Bounty)に固定する。
+   * ハッシュ任せにすると Results タブを開ける大会に写真が入らないことがあり、
+   * ローカルで一番見たいケースが確認できなくなるため。 */
+  const kind = folderId.indexOf('weekly-bounty') !== -1 ? 1 : hashCode(folderId) % 3;
+  if (kind !== 0) {
+    files.push(shot('mt001_Win.jpg', 0));
+    // 規約が守られず複数残っているケース。名前順で先頭(mt001)が選ばれることの確認用
+    files.push(shot('mt002_Win.jpg', 1));
+  }
+  if (kind === 1) files.push(shot('mt001_FT.jpg', 2));
+  return files;
 }
 
 /* Player's Guide フォルダの中身(mock)。#73 の「更新日が最新の PDF を選ぶ」経路を

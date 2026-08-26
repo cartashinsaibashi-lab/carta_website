@@ -2746,6 +2746,24 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   display: block;
 }
 
+/* Results の優勝 / FT 写真(#80)。In the Money と順位表の間に 2 枚を横並びで置く。
+ * ラベルは出さない(運営の指定)。左が優勝・右が FT という位置で示す。
+ * **スマホでも 2 列を保つ** — 並べて見せたいという要望なので、グリッドの列指定を上書きする。
+ * 片方しか無い大会では左に 1 枚だけ出る(空の枠は作らない)。
+ *
+ * セレクタを `.photo-grid.result-photos` にして詳細度を上げてあるのは、スマホ幅の
+ * `.photo-grid { repeat(3, 1fr) }`(ファイル末尾側)に**後ろ勝ちで負けるため**。
+ * クラス 1 つでは 3 列にされて写真が 1/3 幅になる(実際になった)。 */
+.photo-grid.result-photos {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* 写真は横長(実データは 3:2)。Photos タブのサムネイルは正方形に切り抜いているが、
+ * こちらは 1 枚ずつが主役で、正方形にすると人物の頭や卓が切れるため比率を寝かせる。 */
+.photo-grid.result-photos .photo-thumb { aspect-ratio: 3 / 2; }
+
 /* 拡大表示: 申込モーダルより手前に出す */
 .photo-viewer {
   position: fixed;
