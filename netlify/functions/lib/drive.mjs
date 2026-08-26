@@ -3,7 +3,7 @@
 // Drive 側の運用(顧客と合意済み):
 //   親フォルダ … 「リンクを知っている全員が閲覧可」で共有。ID は PHOTO_DRIVE_FOLDER_ID
 //     └ 「WOLF」/「宴」/「歌留多」… 種別フォルダ。**この 1 段で大会写真の種別が決まる**
-//          ├ 「Play Guide」… Player's Guide の PDF(写真ではないのでここでは無視する)
+//          ├ 「Play Guide」… Player's Guide の PDF 置き場(写真ではない。#73 でここから PDF を出す)
 //          └ 「YYYY-MM-DD 大会名」… 大会 1 つにつき 1 フォルダ
 //               └ 写真ファイル
 //
@@ -24,13 +24,14 @@
 // 万一キーが漏れても非公開のドライブには届かない。
 //
 // 入出力:
-//   listFolderTree(parentId)              → { events, categories, unnamed, misplaced }
+//   listFolderTree(parentId)              → { events, categories, guides, unnamed, misplaced }
 //   listImages(folderId)                  → [{ id, name, w, h, takenAt }]
+//   listPdfs(folderId)                    → [{ id, name, modifiedTime }](更新日の新しい順)
 //   matchFolder(events, evKey, category)  → 一致したフォルダ(+ match 種別)| null
 //   eventFolderKey(venueEvent)            → { date, name } (照合に使う大会側のキー)
 
 import { config } from './config.mjs';
-import { mockDriveFolders, mockDriveImages, mockPhotoSrc } from './fixtures.mjs';
+import { mockDriveFolders, mockDriveImages, mockDrivePdfs, mockPhotoSrc } from './fixtures.mjs';
 
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -225,6 +226,8 @@ function toEventFolder(f, parsed, category) {
  * 返り値:
  *   events     … 大会フォルダ [{ id, name, date, title, norm, category }]
  *   categories … 見つかった種別フォルダ [{ id, name, category }]
+ *   guides     … 種別フォルダ直下の Player's Guide フォルダ [{ id, name, category }](#73)。
+ *                中の PDF は listPdfs() で開くたびに探す — ここでは場所だけ返す
  *   unnamed    … 命名規約を満たさないフォルダ名(写真が出ない)
  *   misplaced  … 親フォルダ直下に残っている大会フォルダ名。種別が決まらないので写真が
  *                出ない = 種別フォルダへの移動漏れ。呼び出し側が警告に出す(黙って捨てない)
@@ -237,6 +240,7 @@ export async function listFolderTree(parentId) {
 
   const categories = [];
   const events = [];
+  const guides = [];
   const unnamed = [];
   const misplaced = [];
 
@@ -260,14 +264,18 @@ export async function listFolderTree(parentId) {
 
   categories.forEach((c, i) => {
     for (const f of children[i]) {
-      if (isGuideFolder(f.name)) continue; // Player's Guide の置き場。写真ではない
+      // Player's Guide の置き場。写真ではないので大会フォルダには入れず、場所だけ控える(#73)
+      if (isGuideFolder(f.name)) {
+        guides.push({ id: f.id, name: f.name, category: c.category });
+        continue;
+      }
       const parsed = parseFolderName(f.name);
       if (parsed) events.push(toEventFolder(f, parsed, c.category));
       else unnamed.push(`${c.name}/${f.name}`);
     }
   });
 
-  return { events, categories, unnamed, misplaced };
+  return { events, categories, guides, unnamed, misplaced };
 }
 
 async function fetchFolders(parentId) {
@@ -312,6 +320,35 @@ async function fetchImages(folderId) {
     `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`,
     'id,name,imageMediaMetadata(width,height,time)'
   );
+}
+
+/* Player's Guide フォルダに入っている PDF の一覧。**更新日の新しい順**に返す(#73)。
+ *
+ * ファイル ID を設定に持たずここで毎回探すのは、運営が PDF を差し替えるだけで
+ * 反映されるようにするため(設定変更も再デプロイも要らない)。
+ * modifiedTime は RFC3339 の UTC 文字列("2026-08-20T09:00:00.000Z")で桁が揃うので、
+ * Date に起こさず文字列比較でそのまま新しい順に並べられる。 */
+export async function listPdfs(folderId) {
+  const raw = config.isMock ? mockDrivePdfs(folderId) : await fetchPdfs(folderId);
+  return raw
+    .map((f) => ({ id: f.id, name: f.name || '', modifiedTime: f.modifiedTime || '' }))
+    .sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime));
+}
+
+async function fetchPdfs(folderId) {
+  assertId(folderId, 'フォルダ ID');
+  return driveList(
+    `'${folderId}' in parents and mimeType = 'application/pdf' and trashed = false`,
+    'id,name,modifiedTime'
+  );
+}
+
+/* PDF を別タブで開くための URL。
+ * 画像と違って lh3.googleusercontent.com は使えない(あちらは画像専用)ので、
+ * Drive のプレビュー画面をそのまま開く。サイト内にビューアは作らない(#73)。
+ * mock のファイル ID は実在しないため、リンク先は開けない(ボタンの出方の確認用)。 */
+export function guideUrl(fileId) {
+  return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
 }
 
 /* 表示用の画像 URL(幅を指定してリサイズ済みを受け取る)。

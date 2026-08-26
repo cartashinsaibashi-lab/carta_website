@@ -2369,6 +2369,59 @@
     }, 1000);
   }
 
+  /* ---------- クイックリンク(#73) ----------
+   * フィルタの下に置く、大会一覧の外への導線(Player's Guide など)。
+   * リンク先は Drive に置かれた PDF 次第で変わるので、静的配信のフロントでは決められない。
+   * /api/site-links から受け取り、そこに無いボタンは出さない。
+   *
+   * 出さない条件は 2 つある。どちらも「押しても何も起きないボタン」を見せないため:
+   *   - 歌留多(other) … 運営が Player's Guide を用意しない運用なので行ごと出さない
+   *   - リンクが null  … その種別のフォルダにまだ PDF が置かれていない
+   *
+   * ボタンが 0 個なら行ごと隠す。フィルタバーはスクロールで上に残るので、
+   * 空の行を出しておくとその分だけ一覧が隠れる面積が増えてしまう。 */
+
+  var quickLinksEl = document.getElementById('quickLinks');
+  var QUICK_LINK_CATEGORIES = ['wolf', 'utage'];
+  var siteLinks = null;                 // /api/site-links の結果(未取得は null)
+
+  /* ラベルを 2 つ持たせて CSS で出し分ける。スマホ幅では短い方だけを出す
+   * (行が増えるぶん一覧が隠れるので、狭い画面ではボタンの高さ・幅を詰める)。 */
+  function quickLinkHtml(href, label, shortLabel) {
+    return (
+      '<a class="quick-link" href="' + esc(href) + '" target="_blank" rel="noopener">' +
+      '<span class="ql-label">' + esc(label) + '</span>' +
+      '<span class="ql-label-short">' + esc(shortLabel) + '</span>' +
+      '</a>'
+    );
+  }
+
+  function renderQuickLinks() {
+    if (!quickLinksEl) return;
+    var html = '';
+    if (QUICK_LINK_CATEGORIES.indexOf(state.category) !== -1) {
+      var links = siteLinks && siteLinks[state.category];
+      if (links && links.guidePdf) html += quickLinkHtml(links.guidePdf, "Player's Guide", 'Guide');
+    }
+    quickLinksEl.innerHTML = html;
+    quickLinksEl.hidden = !html;
+  }
+
+  /* リンクの取得は 1 回だけ。種別を切り替えても取り直さない
+   * (3 種別ぶんまとめて返ってくるため)。 */
+  function loadSiteLinks() {
+    // API に繋がっていないときは取りに行かない(詳細の遅延ロードと同じ判断)
+    if (window.__CARTA_DATA_SOURCE__ !== 'api') return;
+    fetch('/api/site-links', { headers: { Accept: 'application/json' } })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (d) {
+        if (!d || d.error) return;
+        siteLinks = d;
+        renderQuickLinks();
+      })
+      .catch(function () { /* 取れなければクイックリンクが出ないだけ */ });
+  }
+
   /* ---------- 上部タブ / フィルタ ---------- */
 
   /* 種別の切り替え。ヘッダーのタブと、初回表示の選択画面の両方から呼ぶ。 */
@@ -2379,6 +2432,7 @@
       t.classList.toggle('is-active', t.dataset.category === category);
     });
     applyTheme(category);
+    renderQuickLinks();            // 種別ごとにリンクが変わる(#73)
     state.pickerOpen = false;
     renderMonthNav();
     renderDateStrip();
@@ -2520,6 +2574,7 @@
   renderMonthNav();
   renderDateStrip();
   render();
+  loadSiteLinks();                 // クイックリンク(Player's Guide)の URL を取得(#73)
   ensureCountdownTicker();         // STARTS IN / REG CLOSE IN のカウントダウン開始
   startListPolling();              // 一覧を 60 秒ごとに取り直す(#60)
   if (state.openedId) {
