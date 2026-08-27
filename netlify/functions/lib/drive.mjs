@@ -4,8 +4,12 @@
 //   親フォルダ … 「リンクを知っている全員が閲覧可」で共有。ID は PHOTO_DRIVE_FOLDER_ID
 //     └ 「WOLF」/「宴」/「歌留多」… 種別フォルダ。**この 1 段で大会写真の種別が決まる**
 //          ├ 「Play Guide」… Player's Guide の PDF 置き場(写真ではない。#73 でここから PDF を出す)
-//          └ 「YYYY-MM-DD 大会名」… 大会 1 つにつき 1 フォルダ
+//          └ 「YYYY-MM-DD #番号 大会名」… 大会 1 つにつき 1 フォルダ
 //               └ 写真ファイル
+//
+// 番号は運営の管理表記で、通常大会は「#12」、特殊イベントは「#SP2」、
+// サテライトは「#S1」(#82)。PokerLens の管理画面の No. は数値しか入らないため
+// 「#SP2」は API 側の大会名には現れない — 照合は番号を外した名前で行う(pickFolder)。
 //
 // 共有してもらうのは親フォルダだけで、大会ごとのフォルダは名前から自動照合する。
 // こうすると運営は「フォルダを作って写真を入れる」だけでよく、
@@ -28,7 +32,7 @@
 //   listImages(folderId)                  → [{ id, name, w, h, takenAt }]
 //   listPdfs(folderId)                    → [{ id, name, modifiedTime }](更新日の新しい順)
 //   matchFolder(events, evKey, category)  → 一致したフォルダ(+ match 種別)| null
-//   eventFolderKey(venueEvent)            → { date, name } (照合に使う大会側のキー)
+//   eventFolderKey(venueEvent)            → { date, name, base } (照合に使う大会側のキー)
 
 import { config } from './config.mjs';
 import { mockDriveFolders, mockDriveImages, mockDrivePdfs, mockPhotoSrc } from './fixtures.mjs';
@@ -138,12 +142,30 @@ export function normalizeTitle(s) {
  * 日付として読めなければ null を返し、呼び出し側が「命名ミス」としてログに出す。 */
 const FOLDER_RE = /^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})[\s_－-]*(.*)$/;
 
+/* 大会名の先頭に付く番号トークン(#82)。運営が実際に書いている書式:
+ *   「#12」通常大会 /「#SP2」特殊イベント /「#S1」サテライト /「#3/A」フライト
+ * # を省いた「12 大会名」も拾う。ただし**英字だけの「SP 大会名」は番号とみなさない** —
+ * 「SP」で始まる大会名を丸ごと削ってしまうため、英字だけのときは # が要る。
+ * 番号の後ろに続く区切りは必ず空白(実データ 62 フォルダすべて)。 */
+const FOLDER_NO_RE = /^(?:#\s*[A-Za-z]{0,3}\d{0,3}|[A-Za-z]{0,3}\d{1,3})(?:\/[A-Za-z0-9]{1,3})?\s+/;
+
+/* 番号に続くフライト表記「(1A)」「(2)」。PokerLens の ev.name には入るが
+ * dailyDetails.name には入らないので、番号を外した照合キーからも一緒に外す。 */
+const FOLDER_FLIGHT_RE = /^[(（][^)）]{1,6}[)）]\s*/;
+
 export function parseFolderName(name) {
   const m = FOLDER_RE.exec(String(name || '').trim());
   if (!m) return null;
   const [, y, mo, d, rest] = m;
   if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return null;
-  return { date: `${y}-${mo}-${d}`, title: rest.trim(), norm: normalizeTitle(rest) };
+  const title = rest.trim();
+  return {
+    date: `${y}-${mo}-${d}`,
+    title,
+    norm: normalizeTitle(title),
+    // 番号を外した名前。pickFolder() の 2 段目(番号表記の違いの吸収)で使う
+    base: normalizeTitle(title.replace(FOLDER_NO_RE, '').replace(FOLDER_FLIGHT_RE, '')),
+  };
 }
 
 /* 照合に使う大会側のキー。開催日は dailyDetails.startDate / date から取る
@@ -153,13 +175,25 @@ export function parseFolderName(name) {
 export function eventFolderKey(ev) {
   const dd = (ev && ev.dailyDetails) || {};
   const iso = String(dd.startDate || dd.date || (ev && ev.status && ev.status.date) || '');
-  return { date: iso.slice(0, 10), name: (ev && ev.name) || dd.name || '' };
+  return {
+    date: iso.slice(0, 10),
+    name: (ev && ev.name) || dd.name || '',
+    /* 番号を含まない大会名(#82)。**大会側は正規表現で削らず dailyDetails.name を使う** —
+     * PokerLens が name を「# + No. + 大会名」で組み立て、番号を含まない名前を
+     * dailyDetails.name に別途持っているため(実データ 934 件すべてに入っている)。
+     * ev.name から正規表現で削ると「XPT 3枠保証サテライト」のように番号と紛らわしい
+     * 先頭語を持つ大会(25 件)を削り過ぎる。 */
+    base: normalizeTitle(dd.name || ''),
+  };
 }
 
-/* 開催日 + 名前でフォルダを 1 つ選ぶ。
- *   1) 開催日 + 正規化した大会名の完全一致
- *   2) 同じ開催日で、どちらかの名前がもう一方を含む(運営が大会名を一部だけ書いた場合)。
- *      候補が 1 つに絞れるときだけ採用する
+/* 開催日 + 名前でフォルダを 1 つ選ぶ。返り値の match は当たった段(運用時に
+ * GET /api/photos/:id でどう当たったか分かるようにするため)。
+ *   1) 'exact'   開催日 + 正規化した大会名の完全一致
+ *   2) 'base'    番号を外した大会名の一致。フォルダ名の番号が PokerLens の No. と
+ *                食い違う場合を拾う(#82)。候補が 1 つに絞れるときだけ採用する
+ *   3) 'partial' 同じ開催日で、どちらかの名前がもう一方を含む(運営が大会名を
+ *                一部だけ書いた場合)。候補が 1 つに絞れるときだけ採用する
  * 同日・同名の大会は実データで 4 件だけ存在する(昼の部・夜の部と思われる)。
  * その 4 件は区別できないので、両方に同じフォルダを出す(先頭を使う)。 */
 function pickFolder(folders, key) {
@@ -167,6 +201,18 @@ function pickFolder(folders, key) {
 
   const exact = folders.filter((f) => f.date === key.date && f.norm === want);
   if (exact.length) return { ...exact[0], match: 'exact' };
+
+  /* 番号表記の食い違いを吸収する段(#82)。管理画面の No. は数値しか入らないため、
+   * 特殊イベントとサテライトは PokerLens 側が「#2 白豚…」になる一方、運営は
+   * Short descr. の表記でフォルダを作る(「#SP2 白豚…」)。先頭が食い違うので
+   * 1) の完全一致にも 3) の包含にも掛からず、実際に 2 大会の写真が出ていなかった。
+   * 番号を外した名前どうしなら一致するので、その一致で拾う。
+   * 名前まで一致していれば同じ大会と見てよいが、番号を外すと同日の別大会と
+   * ぶつかりうる(#1 FREE ROLL と #2 FREE ROLL 等)ので、候補が 1 つのときだけ採る。 */
+  if (key.base) {
+    const base = folders.filter((f) => f.date === key.date && f.base === key.base);
+    if (base.length === 1) return { ...base[0], match: 'base' };
+  }
 
   // 短すぎる名前での部分一致は誤爆する(「#1」が何にでも当たる)ので 3 文字以上に限る
   const partial = folders.filter(
@@ -217,6 +263,7 @@ function toEventFolder(f, parsed, category) {
     date: parsed.date,
     title: parsed.title,
     norm: parsed.norm,
+    base: parsed.base, // 先頭の番号を外した名前(番号表記が違うフォルダの照合用 / #82)
     category, // 'wolf' | 'utage' | 'other'。種別フォルダの位置で決まる
   };
 }
