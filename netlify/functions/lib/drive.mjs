@@ -150,7 +150,10 @@ const FOLDER_RE = /^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})[\s_－-]*(.*)$/;
 const FOLDER_NO_RE = /^(?:#\s*[A-Za-z]{0,3}\d{0,3}|[A-Za-z]{0,3}\d{1,3})(?:\/[A-Za-z0-9]{1,3})?\s+/;
 
 /* 番号に続くフライト表記「(1A)」「(2)」。PokerLens の ev.name には入るが
- * dailyDetails.name には入らないので、番号を外した照合キーからも一緒に外す。 */
+ * dailyDetails.name には入らないので、番号を外した照合キーからも一緒に外す。
+ * **運営はフライト表記を管理しない**(2026-08-27 合意)ので新しいフォルダには付かないが、
+ * WOLF SERIES の既存 10 フォルダには付いたまま残っているため外す処理は要る。
+ * どちらの書き方でも当たることは live の 62 フォルダで確認済み。 */
 const FOLDER_FLIGHT_RE = /^[(（][^)）]{1,6}[)）]\s*/;
 
 export function parseFolderName(name) {
