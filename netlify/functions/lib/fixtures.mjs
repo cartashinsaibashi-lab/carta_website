@@ -924,6 +924,19 @@ function mockFolderLabel(name) {
   return name.replace(/—/g, '-').replace(/ /g, '　');
 }
 
+/* 大会フォルダ名の先頭に置く番号(#82)。
+ * 運営は管理画面の No.(数値)ではなく **Short descr. の表記**でフォルダを作るので、
+ * 特殊イベントは「#SP2」、サテライトは「#S1」になり、PokerLens の大会名
+ * (「#2 …」= No. から組み立てた名前)と先頭が食い違う。この食い違いを mock でも
+ * 作っておかないと、番号を外して照合する経路(drive.mjs の pickFolder)を
+ * ローカルで確認できない。数値だけの shortName しか無い大会は No. をそのまま使う。 */
+function mockFolderNo(ev) {
+  const short = String(ev.dailyDetails.shortName || '').replace(/^#+/, '').trim();
+  const no = ev.behaviour.number || 0;
+  if (/[A-Za-z]/.test(short)) return '#' + (/\d/.test(short) ? short : short + (no || ''));
+  return no ? '#' + no : '';
+}
+
 /* mock の種別フォルダ。名前は config.mjs の photoFolder* の既定値と揃えてある
  * (fixtures は依存を持たない方針なので参照はせず、値を書いてある。片方を変えたら
  * もう片方も直す — ずれると mock で種別が付かなくなる)。 */
@@ -958,11 +971,16 @@ const MOCK_MISPLACED_EVENT_ID = 'evt-wolf-final';
  * ただし evt-wolf-sat だけは意図的にフォルダを作らない —「写真 0 枚 → Photos タブが
  * 出ない」ケースの確認用に 1 件残しておく必要があるため。 */
 export function mockDriveFolders(parentId) {
-  const eventFolder = (e) => ({
-    id: 'mockfolder-' + e.id,
-    name: `${e.dailyDetails.startDate.slice(0, 10)} ${mockFolderLabel(e.name)}`,
-    mimeType: 'application/vnd.google-apps.folder',
-  });
+  const eventFolder = (e) => {
+    // 番号は Short descr. 表記(#SP2)、大会名は番号を含まない dailyDetails.name から組む。
+    // ev.name(= 「#2 …」)をそのまま使うと、live には無い「番号が一致した状態」になる
+    const label = [mockFolderNo(e), e.dailyDetails.name].filter(Boolean).join(' ');
+    return {
+      id: 'mockfolder-' + e.id,
+      name: `${e.dailyDetails.startDate.slice(0, 10)} ${mockFolderLabel(label)}`,
+      mimeType: 'application/vnd.google-apps.folder',
+    };
+  };
 
   const events = buildEvents(Date.now()).filter(
     (e) => e.id !== 'evt-wolf-sat' && e.id !== MOCK_MISPLACED_EVENT_ID

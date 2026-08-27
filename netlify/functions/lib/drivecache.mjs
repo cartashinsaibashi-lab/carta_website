@@ -26,10 +26,11 @@ export const CACHE_MS = 10 * 60e3;
 /* フォルダ索引のキャッシュキー。
  * **保存する形が変わったら必ず名前も変える。** #72 で配列から
  * { events, categories, unnamed, misplaced } のオブジェクトに変わったため v3 にし、
- * #73 で Player's Guide の場所(guides)が増えたため v4 にした。
+ * #73 で Player's Guide の場所(guides)が増えたため v4、
+ * #82 で大会フォルダに base(番号を外した名前)が増えたため v5 にした。
  * 同じキーのままだと、デプロイ直後に前の形の値を読んで落ちる
  * (guides が無い索引を掴むとクイックリンクが出ないまま 10 分待つことになる)。 */
-const FOLDERS_KEY = 'folder-index-v4';
+const FOLDERS_KEY = 'folder-index-v5';
 
 let _store; // undefined=未試行 / null=利用不可 / object=store
 
