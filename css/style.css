@@ -1661,23 +1661,14 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
  * 560px は、名前の列に 350px 前後を残せる下限。live の登録名は最長でも
  * 全角 10 文字ほどなので折り返さずに収まる。 */
 .table-scroll.ranking-scroll {
-  /* 枠を中身(表)の幅まで縮める。fit-content は iOS Safari 14 未満で
-   * 接頭辞付きでないと効かないため、先に -webkit- を書いて上書きさせる。 */
-  width: -webkit-fit-content;
-  width: fit-content;
+  /* 幅は置ける分いっぱいに取り、PC でだけ 560px で頭打ちにして中央に置く。
+   * スマホでは画面幅いっぱいに広げる(運営の指定)。
+   * 名前とポイントが離れて見える問題は、幅を詰めるのではなく
+   * 下の「項目を中央揃え」で解いている。 */
+  width: 100%;
   max-width: 560px;
   margin-left: auto;
   margin-right: auto;
-}
-
-/* 表そのものも中身の幅にする(既定の width: 100% を打ち消す)。
- * 100% のままだと余った幅を Player 列が全部吸ってしまい、名前とポイントが
- * 遠く離れる。auto なら表の幅は「中身の幅」と「置ける幅」の小さいほうに決まるので、
- * **max-width を書かなくても枠を超えない** — iOS Safari が table の max-width を
- * 効かせない問題(#84)を避けつつ、狭い端末でも横スクロールにならない。
- * 名前が長いときは .col-player の折り返しが効いて幅で吸収する。 */
-.data-table.ranking-table {
-  width: auto;
 }
 
 /* 選手名は折り返し可(長い名前でも横スクロールさせない) */
@@ -1825,10 +1816,19 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 .results-table .col-pos,
 .ranking-table .col-pos { width: 2.8em; text-align: center; font-weight: 700; }
 
-/* ランキングの数値列。ポイントは小数が出る(46.8 / 83.2)ので右寄せで桁を揃える。
- * 参加大会数は補助情報なので、ポイントより弱いトーンにする。 */
+/* ランキングは**全列を中央揃え**にする(運営の指定)。
+ * 表は画面幅いっぱいに広がるため、名前を左・数値を右に寄せると 1 行の中で
+ * 60〜80px(PC ではそれ以上)離れ、どの行のポイントなのか視線が飛んでいた。
+ * 中央に寄せると、列が広くても値どうしが近くに集まる。
+ *
+ * 引き換えにポイントの小数点の位置は行ごとにずれる(350.6 と 83.2)。
+ * tabular-nums は残してあるので桁幅は揃っており、読みにくさは小さいと判断した。 */
+.ranking-table th,
+.ranking-table .col-player { text-align: center; }
+
+/* 参加大会数は補助情報なので、ポイントより弱いトーンにする。 */
 .ranking-table .col-points {
-  text-align: right;
+  text-align: center;
   font-family: var(--font-display);
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -1836,14 +1836,11 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
 }
 
 .ranking-table .col-events {
-  text-align: right;
+  text-align: center;
   width: 4.5em;
   color: var(--text-dim);
   white-space: nowrap;
 }
-
-.ranking-table th:nth-child(3),
-.ranking-table th:nth-child(4) { text-align: right; }
 
 .pos-medal {
   display: inline-grid;
