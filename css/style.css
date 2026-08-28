@@ -1661,10 +1661,23 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
  * 560px は、名前の列に 350px 前後を残せる下限。live の登録名は最長でも
  * 全角 10 文字ほどなので折り返さずに収まる。 */
 .table-scroll.ranking-scroll {
-  width: 100%;
+  /* 枠を中身(表)の幅まで縮める。fit-content は iOS Safari 14 未満で
+   * 接頭辞付きでないと効かないため、先に -webkit- を書いて上書きさせる。 */
+  width: -webkit-fit-content;
+  width: fit-content;
   max-width: 560px;
   margin-left: auto;
   margin-right: auto;
+}
+
+/* 表そのものも中身の幅にする(既定の width: 100% を打ち消す)。
+ * 100% のままだと余った幅を Player 列が全部吸ってしまい、名前とポイントが
+ * 遠く離れる。auto なら表の幅は「中身の幅」と「置ける幅」の小さいほうに決まるので、
+ * **max-width を書かなくても枠を超えない** — iOS Safari が table の max-width を
+ * 効かせない問題(#84)を避けつつ、狭い端末でも横スクロールにならない。
+ * 名前が長いときは .col-player の折り返しが効いて幅で吸収する。 */
+.data-table.ranking-table {
+  width: auto;
 }
 
 /* 選手名は折り返し可(長い名前でも横スクロールさせない) */
