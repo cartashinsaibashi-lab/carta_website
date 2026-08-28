@@ -120,6 +120,7 @@ function toRankingInfo(rk) {
  * position はスカラーではなく { index, events, points } のオブジェクトで、表の 3 列は
  * すべてここから取れる。ポイントは整数とは限らない(46.8 / 83.2 など)ので丸めない。
  *
+ * 表の列は Rank / Player / Points / Wins / ITM(運営の指定 2026-08-28)。
  * 表示名は nickname を優先し、空なら description のイニシャル表記(「Y. Y.」)にする。
  * 本名は出さない — 実測で全員 privacyAgree: false のため。
  * nickname の登録率は live で Wolf 218/218・宴 461/480 で、宴には未登録が 19 名いる。 */
@@ -136,11 +137,15 @@ export async function rankingRows(rankingId) {
       const pos = r.position || {};
       const player = r.player || {};
       const nickname = String(player.nickname || '').trim();
+      /* Wins(優勝回数)と ITM(入賞回数)は position ではなく**行の直下**にある
+       * (winsCount / inTheMoneyCount)。管理画面の順位表と同じ列で、
+       * ほかに finalTableCount(F.T.)と totalWinAmount も返るが今は出さない。 */
       return {
         rank: Number(pos.index) || 0,
         name: nickname || String(player.description || '').trim(),
         points: Number(pos.points) || 0,
-        events: Number(pos.events) || 0,
+        wins: Number(r.winsCount) || 0,
+        itm: Number(r.inTheMoneyCount) || 0,
       };
     })
     // 応答は position 順で返るが、順位が入れ替わって見えると表として壊れるので念のため揃える

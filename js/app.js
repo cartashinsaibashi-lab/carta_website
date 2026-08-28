@@ -2864,7 +2864,9 @@
         '<td class="col-player">' + esc(r.name || '\u2014') + '</td>' +
         // ポイントは整数とは限らない(46.8 / 83.2)ので丸めずそのまま出す
         '<td class="col-points">' + num(r.points) + '</td>' +
-        '<td class="col-events">' + num(r.events) + '</td>' +
+        // Wins = 優勝回数 / ITM = 入賞(In The Money)回数
+        '<td class="col-wins">' + num(r.wins) + '</td>' +
+        '<td class="col-itm">' + num(r.itm) + '</td>' +
         '</tr>'
       );
     }).join('');
@@ -2872,7 +2874,7 @@
     return (
       head +
       '<div class="table-scroll ranking-scroll"><table class="data-table ranking-table">' +
-      '<thead><tr><th>Rank</th><th>Player</th><th>Points</th><th>Events</th></tr></thead>' +
+      '<thead><tr><th>Rank</th><th>Player</th><th>Points</th><th>Wins</th><th>ITM</th></tr></thead>' +
       '<tbody>' + body + '</tbody>' +
       '</table></div>'
     );

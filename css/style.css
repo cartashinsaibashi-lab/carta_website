@@ -1835,9 +1835,12 @@ body[data-theme="wolf"] .summary-value { font-style: italic; }
   white-space: nowrap;
 }
 
-.ranking-table .col-events {
+/* Wins(優勝回数)と ITM(入賞回数)。1 桁の数字しか入らないので幅を固定して、
+ * 余りは Player 列に回す。補助情報なのでポイントより弱いトーンにする。 */
+.ranking-table .col-wins,
+.ranking-table .col-itm {
   text-align: center;
-  width: 4.5em;
+  width: 3.4em;
   color: var(--text-dim);
   white-space: nowrap;
 }
