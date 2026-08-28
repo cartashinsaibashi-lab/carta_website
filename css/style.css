@@ -1004,14 +1004,31 @@ body.app-ready .app-loading {
   padding-bottom: 64px;
 }
 
-/* 日付見出し(schedule 区切り): 左に縦アクセントバー + 日付 + 右へ伸びる細線 */
+/* 日付見出し(schedule 区切り): テーマ色の帯 + 左に縦アクセントバー + 日付
+ *
+ * 以前は「縦バー + 日付 + 右へ伸びる 1px の線」で、カードと同じ地の上に浮いていた。
+ * 線が細いうえ、見出しの上下の間隔(6px / -3px)がカード同士の間隔(14px)と近く、
+ * 日ごとのまとまりが読み取りにくかった(運営の指摘)。帯にして地の明度を変える。
+ *
+ * 地色にテーマ変数(--bg-elevated 等)ではなくアクセントの半透明を使うのは、
+ * **PC とスマホで帯の下地が違う**ため。PC では一覧は .content-panel
+ * (= --bg-elevated)の上にあり、スマホでは .content-panel の装飾が外れて
+ * --bg の上に来る。固定色だとどちらかで下地と同化して帯が消える。
+ * 半透明なら両方で同じだけ明度が上がり、テーマ 3 種の色にも自動で追従する。
+ *
+ * 左右は下地の端まで伸ばす(下の負のマージン)。PC はパネルの内側いっぱい、
+ * スマホは画面端まで — 日付バーや状況フィルタと同じ「全幅の行」の作りに揃える。 */
 .date-divider {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 2px 2px 0;
-  margin-top: 6px;
-  margin-bottom: -3px;   /* 直後のカードへ寄せる(list gap 14px を詰める) */
+  gap: 10px;
+  /* 左右の padding は .container / .content-panel のそれと同じ値にして、
+   * 帯の中の日付がカードの左辺とそろうようにする。 */
+  padding: 7px 16px;
+  margin: 10px -16px -2px;
+  background: rgba(var(--accent-rgb), 0.16);
+  border-top: 1px solid rgba(var(--accent-rgb), 0.34);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.34);
 }
 .date-divider:first-child { margin-top: 0; }
 .date-divider::before {
@@ -1021,12 +1038,6 @@ body.app-ready .app-loading {
   height: 15px;
   border-radius: 2px;
   background: var(--cat-strip);
-}
-.date-divider::after {
-  content: '';
-  flex: 1 1 auto;
-  height: 1px;
-  background: var(--border);
 }
 .date-divider-label {
   flex: 0 0 auto;
@@ -3095,6 +3106,11 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
   .reg-button { width: 100%; }
 
   .event-list { gap: 10px; padding-bottom: 48px; }
+
+  /* 日付の帯はスマホでは画面端まで。この帯では .content-panel の padding が 0 に
+   * なるので、打ち消す値は .container の padding(14px)側になる。
+   * 日付バー・状況フィルタ・クイックリンクと同じ -14px にそろえてある。 */
+  .date-divider { padding-left: 14px; padding-right: 14px; margin-left: -14px; margin-right: -14px; }
 
   .modal-overlay { padding: 12px; align-items: end; }
   .modal { padding: 18px 16px 22px; max-height: 92vh; }
