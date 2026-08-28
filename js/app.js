@@ -2483,20 +2483,19 @@
   var QUICK_LINK_CATEGORIES = ['wolf', 'utage'];
   var siteLinks = null;                 // /api/site-links の結果(未取得は null)
 
-  /* ラベルを 2 つ持たせて CSS で出し分ける。スマホ幅では短い方だけを出す
-   * (行が増えるぶん一覧が隠れるので、狭い画面ではボタンの高さ・幅を詰める)。 */
-  function quickLabels(label, shortLabel) {
-    return (
-      '<span class="ql-label">' + esc(label) + '</span>' +
-      '<span class="ql-label-short">' + esc(shortLabel) + '</span>'
-    );
+  /* ラベルはスマホ幅でも略さず出す。以前は狭い画面用に「Guide」「POS」と短縮形へ
+   * 入れ替えていたが、何のボタンか分からないという指摘を受けて取りやめた(運営の指定)。
+   * 3 つ並べても 390px で 298px しか要らず、略さなくても収まる
+   * (収まらないのは 3 等分にしていたせいだった。詳細は CSS の .quick-link 参照)。 */
+  function quickLabels(label) {
+    return '<span class="ql-label">' + esc(label) + '</span>';
   }
 
   // 外部(Drive)を別タブで開くリンク
-  function quickLinkHtml(href, label, shortLabel) {
+  function quickLinkHtml(href, label) {
     return (
       '<a class="quick-link" href="' + esc(href) + '" target="_blank" rel="noopener">' +
-      quickLabels(label, shortLabel) +
+      quickLabels(label) +
       '</a>'
     );
   }
@@ -2504,10 +2503,10 @@
   /* サイト内の画面を切り替えるボタン(写真まとめ #74 / ランキング #78)。
    * 遷移しないので a ではなく button。開いている間は行ごと消えるため、
    * 「選択中」の状態は持たせていない。 */
-  function quickButtonHtml(action, label, shortLabel) {
+  function quickButtonHtml(action, label) {
     return (
       '<button class="quick-link" type="button" data-quick-action="' + esc(action) + '">' +
-      quickLabels(label, shortLabel) +
+      quickLabels(label) +
       '</button>'
     );
   }
@@ -2523,16 +2522,15 @@
     var html = '';
     if (QUICK_LINK_CATEGORIES.indexOf(state.category) !== -1) {
       var links = siteLinks && siteLinks[state.category];
-      if (links && links.guidePdf) html += quickLinkHtml(links.guidePdf, "Player's Guide", 'Guide');
+      if (links && links.guidePdf) html += quickLinkHtml(links.guidePdf, "Player's Guide");
       /* 合計ランキング(#78)。公開されていない種別では出さない。
-       * ラベルは運営の呼び方に合わせて「Player of the Series」。スマホ幅の短縮形 POS も
-       * 運営表記そのもので、PokerLens 側のランキング名(「宴POS ver3」)と同じ略語。 */
+       * ラベルは運営の呼び方に合わせて「Player of the Series」。 */
       if (hasRanking(state.category)) {
-        html += quickButtonHtml('ranking', 'Player of the Series', 'POS');
+        html += quickButtonHtml('ranking', 'Player of the Series');
       }
       // 写真まとめ(#74)
       if (hasPhotoFolders(state.category)) {
-        html += quickButtonHtml('photos', 'Photos', 'Photos');
+        html += quickButtonHtml('photos', 'Photos');
       }
     }
     quickLinksEl.innerHTML = html;

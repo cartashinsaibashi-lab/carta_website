@@ -783,7 +783,12 @@ body[data-theme="wolf"] .status-pill.is-active {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  flex: 1 1 0;
+  /* flex-basis を auto にして、ボタンの幅を中身に合わせる。3 等分(flex: 1 1 0)だと
+   * 390px で 1 つあたり 122px しか回らず、一番長い「Player of the Series」(130px 必要)
+   * だけが入りきらなかった。中身基準にすると 3 つで 298px、余った 80px を等分するので
+   * 行の幅はそのまま埋まる。shrink は 1 のまま残してあり、これより狭い端末では
+   * 下の .ql-label の省略記号で畳む(横スクロールにはしない)。 */
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 32px;
   padding: 5px 10px;
@@ -808,9 +813,9 @@ body[data-theme="wolf"] .status-pill.is-active {
  * 上の .quick-links{display:flex} に負けてしまう(実際に負けていて行が消えなかった)。 */
 .quick-links[hidden] { display: none; }
 
-/* ラベルは通常幅の長い方だけを出す(短い方はスマホ幅で入れ替える) */
+/* 入りきらない端末では省略記号で畳む(横スクロールにはしない)。
+ * 実測では 320px でも 3 つとも入るので、これは保険。 */
 .quick-link .ql-label { overflow: hidden; text-overflow: ellipsis; }
-.quick-link .ql-label-short { display: none; }
 
 /* ---------- 初回表示のシリーズ選択(全画面) ----------
  * ローディング(z-index 300)より手前に出し、選ぶまで背後を操作させない。 */
@@ -3183,8 +3188,6 @@ body[data-view] .status-filter { display: none; }
     font-size: 12px;
   }
 
-  .quick-link .ql-label { display: none; }
-  .quick-link .ql-label-short { display: inline; }
 
   /* 写真まとめ(#74): 狭い幅では大会名と日付を横に並べると名前が潰れるので縦に積む */
   .photo-folder {
