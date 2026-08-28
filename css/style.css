@@ -3021,14 +3021,6 @@ body[data-view] .status-filter { display: none; }
   overflow-wrap: anywhere;
 }
 
-.pf-date {
-  flex: 0 0 auto;
-  font-size: 12.5px;
-  color: var(--text-faint);
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ---------- その他 ---------- */
 
 .empty-message {
@@ -3189,13 +3181,8 @@ body[data-view] .status-filter { display: none; }
   }
 
 
-  /* 写真まとめ(#74): 狭い幅では大会名と日付を横に並べると名前が潰れるので縦に積む */
-  .photo-folder {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    padding: 10px 12px;
-  }
+  /* 写真まとめ(#74): 狭い幅では余白を詰める(日付は行ではなく上の見出しに出る) */
+  .photo-folder { padding: 10px 12px; }
 
   .panel-head { gap: 8px; }
   .panel-title { font-size: 14px; }

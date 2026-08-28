@@ -1276,10 +1276,28 @@
   var WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   /* 日付見出しラベル "07.31 Fri."(参照デザイン準拠) */
-  function dateHeaderLabel(ev) {
-    var wd = WEEKDAYS[new Date(Date.UTC(ev.year, ev.month - 1, ev.day)).getUTCDay()];
+  /* 見出しの日付表記(「05.31 Sat.」)。写真まとめのフォルダ一覧(#74)も同じ見出しを
+   * 使うので、大会オブジェクトではなく年月日を直接受ける形に切り出してある。 */
+  function dateHeaderText(year, month, day) {
+    var wd = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
     var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
-    return p2(ev.month) + '.' + p2(ev.day) + ' ' + wd + '.';
+    return p2(month) + '.' + p2(day) + ' ' + wd + '.';
+  }
+
+  function dateHeaderLabel(ev) {
+    return dateHeaderText(ev.year, ev.month, ev.day);
+  }
+
+  /* Drive のフォルダ名から読んだ開催日('YYYY-MM-DD')を見出しの表記にする。
+   * 読めない値はそのまま返す — 見出しが消えるより、生の文字列でも出ていたほうがよい。 */
+  function dateHeaderFromIso(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? dateHeaderText(Number(m[1]), Number(m[2]), Number(m[3])) : String(iso || '');
+  }
+
+  /* 日付見出しの HTML。大会一覧と写真まとめで同じ見た目にするため 1 か所にまとめる。 */
+  function dateDividerHtml(label) {
+    return '<div class="date-divider"><span class="date-divider-label">' + esc(label) + '</span></div>';
   }
 
   /* カード列を日付ごとに区切って HTML 化。日付が変わる位置に見出しを、
@@ -1298,8 +1316,7 @@
       var k = ev.year + '-' + ev.month + '-' + ev.day;
       if (k !== curKey) {
         curKey = k;
-        out += '<div class="date-divider"><span class="date-divider-label">' +
-          esc(dateHeaderLabel(ev)) + '</span></div>';
+        out += dateDividerHtml(dateHeaderLabel(ev));
       }
       out += cardHtml(ev);
     });
@@ -2659,14 +2676,22 @@
     var folders = categoryFolders(state.category);
     if (!folders.length) return head + panelNote('No photos have been published yet.');
 
-    var items = folders.map(function (f) {
-      return (
+    /* 日付ごとに見出しで区切る(運営の指定)。以前は 1 件ずつ日付を右端に出していたが、
+     * シリーズ中は同じ日に 8 件ほど並ぶので同じ日付が延々と繰り返され、
+     * どこで日が変わるのかが読み取れなかった。見出しは大会一覧と同じものを使う
+     * (フォルダは新しい順に並んでいるので、そのまま走査すれば日付は 1 回ずつしか変わらない)。 */
+    var items = '';
+    var curDate = null;
+    folders.forEach(function (f) {
+      if (f.date !== curDate) {
+        curDate = f.date;
+        items += dateDividerHtml(dateHeaderFromIso(f.date));
+      }
+      items +=
         '<button class="photo-folder" type="button" data-photo-folder-open="' + esc(f.id) + '">' +
         '<span class="pf-title">' + esc(f.title || f.name) + '</span>' +
-        '<span class="pf-date">' + esc(f.date) + '</span>' +
-        '</button>'
-      );
-    }).join('');
+        '</button>';
+    });
     return head + '<div class="photo-folders">' + items + '</div>';
   }
 
