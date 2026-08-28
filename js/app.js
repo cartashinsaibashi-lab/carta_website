@@ -2871,7 +2871,7 @@
 
     return (
       head +
-      '<div class="table-scroll"><table class="data-table ranking-table">' +
+      '<div class="table-scroll ranking-scroll"><table class="data-table ranking-table">' +
       '<thead><tr><th>Rank</th><th>Player</th><th>Points</th><th>Events</th></tr></thead>' +
       '<tbody>' + body + '</tbody>' +
       '</table></div>'

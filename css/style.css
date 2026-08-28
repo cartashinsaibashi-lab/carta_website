@@ -1034,7 +1034,6 @@ body.app-ready .app-loading {
   /* 左右の padding は .container / .content-panel のそれと同じ値にして、
    * 帯の中の日付がカードの左辺とそろうようにする。 */
   padding: 7px 16px;
-  margin: 10px -16px -2px;
   background: rgba(var(--accent-rgb), 0.16);
   border-top: 1px solid rgba(var(--accent-rgb), 0.34);
   border-bottom: 1px solid rgba(var(--accent-rgb), 0.34);
@@ -1646,6 +1645,27 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 .data-table.prize-table td:last-child,
 .data-table.ranking-table th:last-child,
 .data-table.ranking-table td:last-child { padding-right: 12px; }
+
+/* ランキング表は幅の上限を決めて中央に置く(#68 でストラクチャー表に入れたのと同じ考え方)。
+ *
+ * ランキングは一覧を差し替えるパネルなので、枠が PC では 1080px まで広がる。
+ * 4 列しかない表を全幅にすると、選手名が左端・ポイントが右端に張り付いて
+ * 中央が大きく空き、どの行のポイントなのか目で追いにくかった
+ * (実測 1280px で表の幅 1044px、名前とポイントの間が 600px 以上空く)。
+ *
+ * **幅の上限は表ではなく枠(div)側に置く。** iPhone Safari は table の max-width を
+ * 効かせないため、表に max-width を持たせると狭い端末で枠を超えたまま残り、
+ * 表だけが指で横に動く(#84 でストラクチャー表が実際にそうなっていた)。
+ * 枠は div なので max-width がどのエンジンでも効き、表は width: 100% で枠に従う。
+ *
+ * 560px は、名前の列に 350px 前後を残せる下限。live の登録名は最長でも
+ * 全角 10 文字ほどなので折り返さずに収まる。 */
+.table-scroll.ranking-scroll {
+  width: 100%;
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+}
 
 /* 選手名は折り返し可(長い名前でも横スクロールさせない) */
 .results-table .col-player,
