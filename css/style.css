@@ -1383,19 +1383,21 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   min-height: 0;
 }
 
+/* タブは最大 5 つ(Live/Results/Survivors + Info + Prize + Structure + Photos)。
+ * 以前は overflow-x: auto で逃がしていたが、iPhone 12(390px)では
+ * "Survivors + Photos" の組み合わせが 2px だけ溢れて Photos の右端が画面外に
+ * 隠れていた(実測 359px / 357px)。狭い画面ではタブの左右 padding を詰めて
+ * 収まるようにし(下の 760px の帯)、それでも溢れたときは横スクロールで
+ * 隠すのではなく折り返して全部見えるようにする(#84)。 */
 .detail-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: 0 20px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   background: var(--bg-inset);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
 }
-
-.detail-tabs::-webkit-scrollbar { display: none; }
 
 .detail-tab {
   flex-shrink: 0;
@@ -1560,11 +1562,17 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   border-radius: 8px;
 }
 
+/* 表はどれも画面幅に収める(横スクロールさせない)。
+ * 以前はここに min-width: 460px(狭い画面では 400px)を置いていたが、
+ * iPhone 12(390px)ではパネルの内寸が 329px しかなく、指定した表は必ず
+ * 枠内で横スクロールになる。実際には結果表・賞金表・ストラクチャー表・
+ * 着席者一覧が個別に min-width: 0 で打ち消していて誰も使っておらず、
+ * 「クラスを付け忘れた表だけ横スクロールになる」罠として残っていた(#84)。
+ * 幅が足りない表は、列幅の配分か折り返しで収める。 */
 .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13.5px;
-  min-width: 460px;
 }
 
 .data-table th {
@@ -1588,12 +1596,10 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table tbody tr:hover { background: var(--row-hover); }
 
-/* 結果表・賞金表も横スクロールなしで画面幅に収める:
- * 最小幅指定を外し、選手名の列だけ折り返す(数値列は nowrap のまま詰めて収める)。 */
+/* 結果表・賞金表は選手名の列だけ折り返して画面幅に収める
+ * (数値列は nowrap のまま詰める。折り返し指定は下の .col-player)。 */
 .data-table.results-table,
 .data-table.prize-table {
-  min-width: 0;
-  width: 100%;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1633,7 +1639,8 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
 /* ストラクチャー表だけは枠線ごと表の幅に縮めて中央に置く(#68)。
  * 表は 420px しかないのに枠(.table-scroll)がパネル全幅(実測 953px)まで伸びていて、
  * 表が広い枠の中に浮いて「右に寄っている」ように見えていた。
- * 幅が足りない画面では max-width で全幅に戻り、従来どおり横スクロールできる。 */
+ * 幅が足りない画面では max-width で全幅に戻る(スマホでも横スクロールはさせない。
+ * 収め方は下の列幅の配分を参照 — #84)。 */
 .table-scroll.structure-scroll {
   width: fit-content;
   max-width: 100%;
@@ -1650,9 +1657,9 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
  * 列幅指定をやめて 4 等分させると、どの行も均等に並ぶ。
  * 幅は 420px 固定 — 4 列の中で一番長い "1,000 / 2,000"(Blinds)が
  * 105px の列に余裕を持って収まる下限がこのあたりで、これ以上広げると
- * また列内の空白が目立つ。スマホでは max-width: 100% 側が効いて全幅になる。 */
+ * また列内の空白が目立つ。スマホでは max-width: 100% 側が効いて全幅になる
+ * (そのぶん 4 列均等では収まらなくなるので、下の 480px 以下で配分を変える)。 */
 .data-table.structure-table {
-  min-width: 0;
   width: 420px;
   max-width: 100%;
   table-layout: fixed;
@@ -1664,6 +1671,25 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   padding: 8px 6px;
   white-space: nowrap;
   text-align: center;
+}
+
+/* 狭い画面では 4 列等幅をやめ、中身の長さに合わせて配分する(#84)。
+ *
+ * 表が 420px を保てるのは、パネルの内寸が 420px 以上ある = 画面幅 480px あたりまで。
+ * それより狭いと max-width: 100% で表ごと縮み、iPhone 12(390px)では 1 列 82px しか
+ * 残らない。すると nowrap の中身が列からはみ出して隣の列に食い込む — 実測で
+ * 見出し "Blinds (SB/BB)" が 94px(12px 超過)、値 "1,000 / 2,000" が 86px(4px 超過)。
+ * 横スクロールはさせない方針(運営の指定)なので、一番長い Blinds 列に幅を寄せて収める。
+ * 390px 端末では Lv 42px / Blinds 134px / Ante・Time 75px になり、
+ * 上の実測値(見出し 94px + 左右 padding 12px = 106px)が Blinds 列に収まる。
+ *
+ * 列がずれて見える #68 の問題が再発しないのは、この帯では余り幅そのものが無く、
+ * どの列も中身ぴったりに近い幅になるため。 */
+@media (max-width: 480px) {
+  .data-table.structure-table th:nth-child(1) { width: 13%; }
+  .data-table.structure-table th:nth-child(2) { width: 41%; }
+  .data-table.structure-table th:nth-child(3) { width: 23%; }
+  .data-table.structure-table th:nth-child(4) { width: 23%; }
 }
 
 .row-break td {
@@ -1988,14 +2014,12 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
 /* 開閉ボタンと一覧が 1 つの箱に見えるよう、間の角を落とす */
 .seat-list-block:not(.is-collapsed) .seat-list-toggle { border-radius: 10px 10px 0 0; }
 
-/* 狭い画面用の .data-table { min-width: 400px } を打ち消す。
- * 一覧は横スクロールさせず、幅いっぱいに 3 列を収める。
+/* 一覧は横スクロールさせず、幅いっぱいに 3 列を収める(名前の列だけ省略記号で詰める)。
  *
- * border-collapse も collapse から separate に変える。collapse のままだと
+ * border-collapse は collapse から separate に変える。collapse のままだと
  * Chromium で th の position: sticky が効かず、見出しが行と一緒にスクロールして
  * 開閉ボタンとの間に行が覗いて見えてしまう。 */
 .seat-list-wrap .seat-list {
-  min-width: 0;
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
@@ -2025,24 +2049,29 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
 .seat-list-row:hover { background: rgba(var(--accent-rgb), 0.10); }
 .seat-list-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-/* 卓の切り替えタブ(2 卓以上のときだけ出る)。卓数が多くても横スクロールで収める */
+/* 卓の切り替えタブ(2 卓以上のときだけ出る)。
+ *
+ * 以前は横スクロールで並べていたが、iPhone 12(390px)では見えるのが 329px =
+ * 3 卓半しかなく、右端で卓タブが切れて「続きがある」ことも伝わっていなかった
+ * (実測: 17 卓で内容 1714px)。横スライドを無くす方針(#84)に合わせて折り返す。
+ * タブ側のラベルを卓番号だけに詰めてあるので、390px でも 5〜6 卓が 1 行に入る。 */
 .seat-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  padding-bottom: 2px;
   margin-bottom: 12px;
 }
 
-.seat-tabs::-webkit-scrollbar { display: none; }
-
+/* 卓番号 + 人数の 2 つだけなので、数字が中央に来るよう最小幅を持たせる
+ * (1 桁と 2 桁の卓が混ざってもチップの大きさが揃う)。 */
 .seat-tab {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  min-width: 52px;
+  min-height: 30px;
   background: var(--bg-inset);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -2050,8 +2079,14 @@ body[data-theme="wolf"] .live-timer { font-style: italic; }
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
-  padding: 6px 12px;
+  padding: 6px 10px;
   cursor: pointer;
+}
+
+/* 卓番号。数字だけだと小さく見えるので、人数バッジより一段大きくする */
+.seat-tab-no {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .seat-tab:hover { color: var(--text); }
@@ -3026,14 +3061,16 @@ body[data-theme="utage"] .done-title { font-family: var(--font-mincho); }
 
   /* アコーディオン内 */
   .detail-tabs { padding: 0 8px; }
-  .detail-tab { padding: 10px 12px 9px; font-size: 12.5px; }
+  /* 左右 12→10px。5 タブで一番長い "Survivors / Info / Prize / Structure / Photos" が
+   * 390px でちょうど 2px 溢れていたので、20px 詰めて確実に 1 行に収める(#84)。 */
+  .detail-tab { padding: 10px 10px 9px; font-size: 12.5px; }
   .detail-panels { padding: 16px 14px 20px; }
 
   .event-ticker { font-size: 13.5px; }
 
   .info-grid { grid-template-columns: 1fr; }
 
-  .data-table { font-size: 12.5px; min-width: 400px; }
+  .data-table { font-size: 12.5px; }
   .data-table th { padding: 9px 12px; }
   .data-table td { padding: 8px 12px; }
 

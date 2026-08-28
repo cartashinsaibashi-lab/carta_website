@@ -649,14 +649,20 @@
     var title = 'Seating (' + num(ev.seats.length) + ' seated' +
       (tables.length > 1 ? ' · ' + tables.length + ' tables' : '') + ')';
 
+    /* タブのラベルは卓番号だけにする。"Table 12" のままだと 1 つ 92px あり、
+     * iPhone 12(390px)では 3 卓半で右端が切れていた。番号だけなら 5〜6 卓が
+     * 1 行に入り、折り返しても縦の占有が抑えられる(#84)。
+     * 何の番号かは見出し(Seating … tables)と卓の図(TABLE n)で分かるが、
+     * 読み上げでは数字だけになるので aria-label に "Table n" を残す。 */
     var tabs = tables.length > 1
       ? '<div class="seat-tabs" role="tablist" aria-label="Table">' +
         tables.map(function (t) {
           var on = t.no === active;
           return (
             '<button type="button" class="seat-tab' + (on ? ' is-active' : '') + '"' +
-            ' data-table="' + t.no + '" role="tab" aria-selected="' + on + '">' +
-            'Table ' + num(t.no) +
+            ' data-table="' + t.no + '" role="tab" aria-selected="' + on + '"' +
+            ' aria-label="Table ' + num(t.no) + '">' +
+            '<span class="seat-tab-no">' + num(t.no) + '</span>' +
             '<span class="seat-tab-count">' + t.seats.length + '</span>' +
             '</button>'
           );
@@ -852,16 +858,6 @@
       el.style.setProperty('--ticker-to', -textPx + 'px');
       track.style.animationDuration =
         Math.max(8, Math.round((boxPx + textPx) / TICKER_PX_PER_SEC)) + 's';
-    });
-  }
-
-  /* 卓タブの横スクロール位置を選択中の卓に合わせる。
-   * ライブ更新でタブ列ごと作り直されるため、描画のたびに呼んで表示位置を復元する。 */
-  function syncSeatTabScroll() {
-    document.querySelectorAll('.seat-tabs').forEach(function (strip) {
-      var on = strip.querySelector('.seat-tab.is-active');
-      if (!on) return;
-      strip.scrollLeft = Math.max(0, on.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2);
     });
   }
 
@@ -1306,7 +1302,6 @@
     emptyEl.hidden = events.length > 0;
     bindCards();
     startTimers();
-    syncSeatTabScroll();
     syncSeatList();
     syncTickers();
     syncOpenParam();
@@ -1654,7 +1649,6 @@
     panel.innerHTML = livePanel(ev);
     clearTimers();
     startTimers(); // 差し替えた data-timer にカウントダウンを付け直す
-    syncSeatTabScroll();
     syncSeatList();
   }
 
@@ -1876,7 +1870,6 @@
     wrap.querySelectorAll('.seat-table').forEach(function (v) {
       v.classList.toggle('is-active', v.dataset.tableView === key);
     });
-    syncSeatTabScroll();
   }
 
   /* 座席図が見える位置まで画面をスクロールする。
