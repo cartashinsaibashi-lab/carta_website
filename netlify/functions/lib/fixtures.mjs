@@ -402,7 +402,12 @@ function venueEvent(over) {
     },
     description: {
       chips: over.buyin ? `${over.buyin.chips.toLocaleString('en-US')} chips` : '',
-      multipleEntries: over.allowRebuy ? 'Re-entry (max 2)' : 'Freezeout',
+      /* 実 API が返すのは「合計エントリー数の上限」を表す 3 通りだけ。
+       * 0 なら "Unlimited"、freezeout は "NO"、上限があれば数字の文字列
+       * (実データ 950 件: Unlimited 869 / NO 50 / 3 が 46 / 4 と 2 が各 1)。
+       * 以前 mock が返していた 'Re-entry (max 2)' は実 API に存在しない形で、
+       * adapter が 1 を引く処理(#95)をローカルで一度も通せなかった。 */
+      multipleEntries: over.maxEntries ? String(over.maxEntries) : (over.allowRebuy ? 'Unlimited' : 'NO'),
       guaranteed: over.guarantee ? `¥${over.guarantee.toLocaleString('en-US')} GTD` : '',
     },
     venue: VENUE,
@@ -548,6 +553,9 @@ function buildEvents(now) {
     buyin: buyin(15000, 2000, 40000, 'Deepstack'),
     buyins: [buyin(15000, 2000, 40000, 'Deepstack'), buyin(25000, 3000, 70000, 'High Roller add')],
     allowRebuy: true,
+    /* エントリー上限がある大会。Info タブが「3 - 1 = 2」と出すことを確認するため
+     * 1 件だけ数字を入れてある(実データでは 950 件中 48 件が数字)。 */
+    maxEntries: 3,
     stats: { totalReservations: 84, guaranteedAmount: 3000000 },
   }),
   venueEvent({
