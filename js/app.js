@@ -1276,10 +1276,28 @@
   var WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   /* 日付見出しラベル "07.31 Fri."(参照デザイン準拠) */
-  function dateHeaderLabel(ev) {
-    var wd = WEEKDAYS[new Date(Date.UTC(ev.year, ev.month - 1, ev.day)).getUTCDay()];
+  /* 見出しの日付表記(「05.31 Sat.」)。写真まとめのフォルダ一覧(#74)も同じ見出しを
+   * 使うので、大会オブジェクトではなく年月日を直接受ける形に切り出してある。 */
+  function dateHeaderText(year, month, day) {
+    var wd = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
     var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
-    return p2(ev.month) + '.' + p2(ev.day) + ' ' + wd + '.';
+    return p2(month) + '.' + p2(day) + ' ' + wd + '.';
+  }
+
+  function dateHeaderLabel(ev) {
+    return dateHeaderText(ev.year, ev.month, ev.day);
+  }
+
+  /* Drive のフォルダ名から読んだ開催日('YYYY-MM-DD')を見出しの表記にする。
+   * 読めない値はそのまま返す — 見出しが消えるより、生の文字列でも出ていたほうがよい。 */
+  function dateHeaderFromIso(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? dateHeaderText(Number(m[1]), Number(m[2]), Number(m[3])) : String(iso || '');
+  }
+
+  /* 日付見出しの HTML。大会一覧と写真まとめで同じ見た目にするため 1 か所にまとめる。 */
+  function dateDividerHtml(label) {
+    return '<div class="date-divider"><span class="date-divider-label">' + esc(label) + '</span></div>';
   }
 
   /* カード列を日付ごとに区切って HTML 化。日付が変わる位置に見出しを、
@@ -1298,8 +1316,7 @@
       var k = ev.year + '-' + ev.month + '-' + ev.day;
       if (k !== curKey) {
         curKey = k;
-        out += '<div class="date-divider"><span class="date-divider-label">' +
-          esc(dateHeaderLabel(ev)) + '</span></div>';
+        out += dateDividerHtml(dateHeaderLabel(ev));
       }
       out += cardHtml(ev);
     });
@@ -2483,20 +2500,19 @@
   var QUICK_LINK_CATEGORIES = ['wolf', 'utage'];
   var siteLinks = null;                 // /api/site-links の結果(未取得は null)
 
-  /* ラベルを 2 つ持たせて CSS で出し分ける。スマホ幅では短い方だけを出す
-   * (行が増えるぶん一覧が隠れるので、狭い画面ではボタンの高さ・幅を詰める)。 */
-  function quickLabels(label, shortLabel) {
-    return (
-      '<span class="ql-label">' + esc(label) + '</span>' +
-      '<span class="ql-label-short">' + esc(shortLabel) + '</span>'
-    );
+  /* ラベルはスマホ幅でも略さず出す。以前は狭い画面用に「Guide」「POS」と短縮形へ
+   * 入れ替えていたが、何のボタンか分からないという指摘を受けて取りやめた(運営の指定)。
+   * 3 つ並べても 390px で 298px しか要らず、略さなくても収まる
+   * (収まらないのは 3 等分にしていたせいだった。詳細は CSS の .quick-link 参照)。 */
+  function quickLabels(label) {
+    return '<span class="ql-label">' + esc(label) + '</span>';
   }
 
   // 外部(Drive)を別タブで開くリンク
-  function quickLinkHtml(href, label, shortLabel) {
+  function quickLinkHtml(href, label) {
     return (
       '<a class="quick-link" href="' + esc(href) + '" target="_blank" rel="noopener">' +
-      quickLabels(label, shortLabel) +
+      quickLabels(label) +
       '</a>'
     );
   }
@@ -2504,10 +2520,10 @@
   /* サイト内の画面を切り替えるボタン(写真まとめ #74 / ランキング #78)。
    * 遷移しないので a ではなく button。開いている間は行ごと消えるため、
    * 「選択中」の状態は持たせていない。 */
-  function quickButtonHtml(action, label, shortLabel) {
+  function quickButtonHtml(action, label) {
     return (
       '<button class="quick-link" type="button" data-quick-action="' + esc(action) + '">' +
-      quickLabels(label, shortLabel) +
+      quickLabels(label) +
       '</button>'
     );
   }
@@ -2523,16 +2539,15 @@
     var html = '';
     if (QUICK_LINK_CATEGORIES.indexOf(state.category) !== -1) {
       var links = siteLinks && siteLinks[state.category];
-      if (links && links.guidePdf) html += quickLinkHtml(links.guidePdf, "Player's Guide", 'Guide');
+      if (links && links.guidePdf) html += quickLinkHtml(links.guidePdf, "Player's Guide");
       /* 合計ランキング(#78)。公開されていない種別では出さない。
-       * ラベルは運営の呼び方に合わせて「Player of the Series」。スマホ幅の短縮形 POS も
-       * 運営表記そのもので、PokerLens 側のランキング名(「宴POS ver3」)と同じ略語。 */
+       * ラベルは運営の呼び方に合わせて「Player of the Series」。 */
       if (hasRanking(state.category)) {
-        html += quickButtonHtml('ranking', 'Player of the Series', 'POS');
+        html += quickButtonHtml('ranking', 'Player of the Series');
       }
       // 写真まとめ(#74)
       if (hasPhotoFolders(state.category)) {
-        html += quickButtonHtml('photos', 'Photos', 'Photos');
+        html += quickButtonHtml('photos', 'Photos');
       }
     }
     quickLinksEl.innerHTML = html;
@@ -2661,14 +2676,22 @@
     var folders = categoryFolders(state.category);
     if (!folders.length) return head + panelNote('No photos have been published yet.');
 
-    var items = folders.map(function (f) {
-      return (
+    /* 日付ごとに見出しで区切る(運営の指定)。以前は 1 件ずつ日付を右端に出していたが、
+     * シリーズ中は同じ日に 8 件ほど並ぶので同じ日付が延々と繰り返され、
+     * どこで日が変わるのかが読み取れなかった。見出しは大会一覧と同じものを使う
+     * (フォルダは新しい順に並んでいるので、そのまま走査すれば日付は 1 回ずつしか変わらない)。 */
+    var items = '';
+    var curDate = null;
+    folders.forEach(function (f) {
+      if (f.date !== curDate) {
+        curDate = f.date;
+        items += dateDividerHtml(dateHeaderFromIso(f.date));
+      }
+      items +=
         '<button class="photo-folder" type="button" data-photo-folder-open="' + esc(f.id) + '">' +
         '<span class="pf-title">' + esc(f.title || f.name) + '</span>' +
-        '<span class="pf-date">' + esc(f.date) + '</span>' +
-        '</button>'
-      );
-    }).join('');
+        '</button>';
+    });
     return head + '<div class="photo-folders">' + items + '</div>';
   }
 
