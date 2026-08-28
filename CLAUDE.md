@@ -67,13 +67,17 @@ netlify/functions/
   event.mjs   GET /api/events/:id       → event + levels + players + payouts を並列取得
               GET /api/events/:id/:part → levels|structure|players|payouts の個別取得
   photos.mjs  GET /api/photos/:id        → Google Drive から大会写真(下記)
-              GET /api/photos            → 親フォルダ直下のフォルダ一覧(運用確認用)
+              GET /api/photos            → 種別フォルダ配下の大会フォルダ一覧
+              GET /api/photos/folder/:id → フォルダ指定で写真一覧(写真まとめ画面 #74)
+  site-links.mjs GET /api/site-links     → クイックリンク行の中身(Player's Guide / ランキング)
+  ranking.mjs GET /api/ranking/:category → シリーズ通算の順位表(下記)
   prewarm.mjs cron */10 — トークンとランキングポイント索引を温め、/api/events の CDN キャッシュを更新
   lib/pokerlens.mjs 認証 + トークンキャッシュ + 401 リトライ + mock/live の分岐
   lib/adapter.mjs   VenueEvent → フロントのデータ契約(唯一の変換層)
   lib/config.mjs    環境変数の集約(他のモジュールは process.env を直接読まない)
   lib/drive.mjs     Drive API v3 + フォルダ名 → 大会の照合(正規化)
-  lib/ranking.mjs   シリーズランキング → 「大会 → 順位 → ポイント」索引(下記)
+  lib/drivecache.mjs Drive 読み取りの Blobs キャッシュ(photos と site-links で共有)
+  lib/ranking.mjs   ランキングの索引(下記)+ 種別 → ランキングの対応づけ / 順位表
   lib/fixtures.mjs  mock モードの VenueEvent/EventLevel/EventPlayer サンプル
   lib/http.mjs      json() / handle()
 ```
@@ -243,6 +247,28 @@ Win が 4 枚入っていることがある。規約が守られていなくて�
 警告ログを残す。実データ(2026-08-26 / 31 フォルダ)では **Win あり 13 件・FT あり 10 件**で
 大半の大会にはどちらも無く、**「Win だけある」が 3 件**(逆は 0 件)。
 **通過日には出さない** — その日の優勝者はまだ居ないため(Day 1 のフォルダにも実際に入っていない)。
+**クイックリンク行(フィルタの下)は Wolf / 宴のみ**。Player's Guide(Drive の `PlayGuide`
+フォルダにある最新 PDF)・Player of the Series(合計ランキング。スマホ幅は POS)・Photos の
+3 つで、**データが用意できていないボタンは出さない**
+(空リンクを踏ませないため)。中身は `/api/site-links` が返す。Ranking と Photos は
+**大会一覧を差し替えるインラインパネル**で、別ページは作らない。URL は `?ranking=<種別>` /
+`?photos=<フォルダID|種別>`。パネルを開いたまま種別を切り替えるとその種別の内容に差し替わり、
+出せるものが無い種別(歌留多)では閉じて一覧に戻る。
+
+**種別 → シリーズランキングは名前の部分一致で決めてはいけない**。実データのランキングは 3 件で、
+「宴」で引くと**中身が空の旧版(宴POS ver2 / 登録 0 名)も当たる**。既定は「登録者 0 名を除き、
+開催期間が最も新しいもの」を選ぶ。`WOLF 2026 #02` のように名前にシリーズ番号が入り、
+シリーズが増えるたびにランキングも増えるため、ID を焼き込むと更新漏れになる
+(`POKERLENS_RANKING_WOLF` / `_UTAGE` で明示指定はできる)。順位表は
+`POST /v1/ranking/{id}/players` の 1 往復で、**`orderBy` は `'position'`**
+(`'points'` は最下位から返る)。`position` は `{index, points, events}` のオブジェクト。
+表示名は nickname 優先で、空なら `player.description` のイニシャル表記(`Y. Y.`)。
+live の登録率は Wolf 218/218・宴 461/480。
+
+**同じ Function に複数のパスを持たせている場合、404 を返すと Netlify が次に一致するパスへ
+配送し直す**。実測で `/api/photos/folder/<未知の ID>` が `/api/photos` のフォルダ一覧を返した。
+404 は呼び出し側に届かず別の応答に化けるので、この種のエンドポイントでは
+「空の結果を 200 で返す」に寄せる。
 
 ## コード規約
 
