@@ -1673,19 +1673,28 @@ body[data-theme="wolf"] .card-seg.seg-prize .v { font-style: italic; }
   text-align: center;
 }
 
-/* 狭い画面では 4 列等幅をやめ、中身の長さに合わせて配分する(#84)。
+/* 狭い画面では表を枠いっぱいに広げ、4 列等幅をやめて中身の長さに合わせて配分する(#84)。
  *
  * 表が 420px を保てるのは、パネルの内寸が 420px 以上ある = 画面幅 480px あたりまで。
- * それより狭いと max-width: 100% で表ごと縮み、iPhone 12(390px)では 1 列 82px しか
- * 残らない。すると nowrap の中身が列からはみ出して隣の列に食い込む — 実測で
- * 見出し "Blinds (SB/BB)" が 94px(12px 超過)、値 "1,000 / 2,000" が 86px(4px 超過)。
- * 横スクロールはさせない方針(運営の指定)なので、一番長い Blinds 列に幅を寄せて収める。
- * 390px 端末では Lv 42px / Blinds 134px / Ante・Time 75px になり、
- * 上の実測値(見出し 94px + 左右 padding 12px = 106px)が Blinds 列に収まる。
+ * それより狭いと表が枠に収まらないので、ここで幅の決め方ごと切り替える。
+ *
+ * **px 幅と max-width を併用しない**のが肝。上の既定は
+ * 枠 `width: fit-content`(中身で幅が決まる)+ 表 `width: 420px; max-width: 100%`
+ * (枠で上限が決まる)という循環になっていて、**iPhone Safari は table の
+ * max-width を効かせない**ため表が 420px のまま残る。375px の実機では
+ * 313px の枠に 420px の表が入り、Lv 列が左に隠れ Time 列が右で切れた状態で
+ * 表だけが指で横に動いていた(2026-08-28 実機報告。Chromium は 313px に潰すので
+ * PC のデバイスモードでは再現しない)。枠を auto・表を % にすると循環が消える。
+ *
+ * 列の配分は、iPhone 12(390px)で Lv 42px / Blinds 134px / Ante・Time 75px。
+ * 一番長い見出し "Blinds (SB/BB)"(実測 94px + 左右 padding 12px = 106px)と
+ * 本番データで最長の値 "50,000 / 100,000"(実測 94px)が Blinds 列に収まる。
  *
  * 列がずれて見える #68 の問題が再発しないのは、この帯では余り幅そのものが無く、
  * どの列も中身ぴったりに近い幅になるため。 */
 @media (max-width: 480px) {
+  .table-scroll.structure-scroll { width: auto; }
+  .data-table.structure-table { width: 100%; }
   .data-table.structure-table th:nth-child(1) { width: 13%; }
   .data-table.structure-table th:nth-child(2) { width: 41%; }
   .data-table.structure-table th:nth-child(3) { width: 23%; }
