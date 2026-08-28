@@ -1,5 +1,7 @@
-// GET /api/photos/:eventId … その大会の写真一覧(Google Drive から)
-// GET /api/photos          … 親フォルダ直下のフォルダ一覧(運用確認用)
+// GET /api/photos/:eventId        … その大会の写真一覧(Google Drive から)
+// GET /api/photos                 … 種別フォルダ配下の大会フォルダ一覧
+//                                   (運用確認用 + 写真まとめ画面の一覧 #74)
+// GET /api/photos/folder/:folderId … フォルダ ID を直接指定して写真一覧(#74)
 //
 // PokerLens には大会に複数枚の写真を紐づける仕組みが無い(告知用の 1 枚だけで、
 // 実データでは過去 921 大会すべてで空)。そのため写真は Drive に置いてもらい、
@@ -28,7 +30,11 @@ import {
 import { cached, loadFolders } from './lib/drivecache.mjs';
 import { json, handle } from './lib/http.mjs';
 
-export const config = { path: ['/api/photos', '/api/photos/:eventId'] };
+/* :eventId と folder/:folderId はセグメント数が違うので取り違えは起きない
+ * (/api/photos/folder/xxx は 3 セグメントで :eventId には当たらない)。 */
+export const config = {
+  path: ['/api/photos', '/api/photos/:eventId', '/api/photos/folder/:folderId'],
+};
 
 /* 表示に使う幅。実測(2026-08-13)の転送量は w400=49KB / w1200=294KB / w2000=608KB。
  * サムネイルはグリッド 1 枚あたり 200px 前後で出すので w400 が等倍、w800 が 2x。
@@ -62,7 +68,7 @@ function cacheOpts(stale) {
 
 export default async (_req, context) =>
   handle(async () => {
-    const { eventId } = context.params;
+    const { eventId, folderId } = context.params;
 
     // 環境変数が未設定でもエラーにしない(写真が無いだけでサイトは成立する)
     if (!appConfig.photosEnabled) {
@@ -70,7 +76,7 @@ export default async (_req, context) =>
     }
 
     try {
-      return await respond(eventId);
+      return folderId ? await respondFolder(folderId) : await respond(eventId);
     } catch (err) {
       // Drive 側の障害で、前回のキャッシュも無い場合。5xx にせず「写真 0 枚」として返す。
       // フロントは写真タブを出さないだけで、大会情報の表示には影響しない。
@@ -126,6 +132,35 @@ async function respond(eventId) {
     {
       eventId,
       folder: { id: hit.id, name: hit.name, match: hit.match, category: hit.category },
+      photos: files.items.map(toPhoto),
+      stale: folders.stale || files.stale,
+    },
+    cacheOpts(folders.stale || files.stale)
+  );
+}
+
+/* フォルダ ID を直接指定して写真を返す(#74)。
+ * 写真まとめ画面はフォルダ一覧から辿るため、大会 ID を経由できない
+ * (フォルダに対応する大会が一覧に無いこともある)。
+ *
+ * **索引に載っているフォルダしか受け付けない。** ID をそのまま Drive に投げると、
+ * このエンドポイントが「公開フォルダなら何でも一覧できる代理サーバー」になってしまう。
+ * 索引 = 親フォルダ配下の大会フォルダなので、突き合わせるだけで範囲を閉じられる。
+ *
+ * 知らない ID には **404 ではなく「写真 0 枚」を返す**。同じ Function に複数のパスを
+ * 持たせていると、404 を返した時点で Netlify が次に一致するパスへ配送し直すため
+ * (実測: /api/photos/folder/<未知の ID> が /api/photos のフォルダ一覧を返した)。
+ * 404 は呼び出し側に届かず、まったく別の応答に化ける。上の :eventId も同じ癖を持つ。
+ * フロントは folder が null なら一覧へ戻す。 */
+async function respondFolder(folderId) {
+  const folders = await loadFolders();
+  const hit = folders.items.events.find((f) => f.id === folderId);
+  if (!hit) return json({ folder: null, photos: [] }, cacheOpts(folders.stale));
+
+  const files = await loadImages(hit.id);
+  return json(
+    {
+      folder: { id: hit.id, name: hit.name, date: hit.date, title: hit.title, category: hit.category },
       photos: files.items.map(toPhoto),
       stale: folders.stale || files.stale,
     },
