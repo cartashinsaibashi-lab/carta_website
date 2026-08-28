@@ -138,25 +138,32 @@ function tagsOf(ev) {
  *
  * そのままだと見出し(Re-entry)と中身がずれて「3 = 再エントリー 3 回」と読めるため、
  * **数値のときは 1 を引いて再エントリー回数に直す**(運営の指定 2026-08-28)。
- * 引いて 0 になる大会(合計 1 エントリー = 再エントリー不可)は、PokerLens が
- * freezeout に返すのと同じ 'NO' に揃える。
  *
- * 数値以外("Unlimited" / "NO")はそのまま通す — こちらは上限の有無を表す語で、
- * 引き算が成り立たない。実データでは `maxEntriesPerPlayer` が 0 でも freezeout の
- * 大会は "NO" が返るため、0 を「上限なし」と読んではいけない。 */
+ * **"NO" は "Freezeout" と出す**(同上)。PokerLens は freezeout の大会に "NO" を
+ * 返すが、見出しが Re-entry だと「再エントリー不可」なのか「上限なし」なのか
+ * 読み取れないため、ポーカーの用語に置き換える。合計 1 エントリー(= 引いて 0)の
+ * 大会も再エントリー不可なので同じ表記に揃える。
+ *
+ * "Unlimited" はそのまま通す — 上限の有無を表す語で引き算が成り立たない。
+ * 実データでは `maxEntriesPerPlayer` が 0 でも freezeout の大会は "NO" が返るため、
+ * 0 を「上限なし」と読んではいけない。 */
+const FREEZEOUT = 'Freezeout';
+
 function reentryText(ev) {
   const d = ev.description && ev.description.multipleEntries;
   if (d) {
-    const total = /^\d+$/.test(String(d).trim()) ? Number(d) : null;
+    const text = String(d).trim();
+    if (text.toUpperCase() === 'NO') return FREEZEOUT;
+    const total = /^\d+$/.test(text) ? Number(text) : null;
     if (total === null) return d;
-    return total - 1 > 0 ? String(total - 1) : 'NO';
+    return total - 1 > 0 ? String(total - 1) : FREEZEOUT;
   }
   /* multipleEntries は実データでは 950 件すべてに入っていて、ここへは来ない。
    * 念のためのフォールバック。**大文字小文字を無視して比べる** — 実データの code は
    * 'Freezeout' で、以前は小文字の 'freezeout' と突き合わせていたため
    * ここに来ても判定できなかった。 */
   const code = String((ev.behaviour && ev.behaviour.code) || '').toLowerCase();
-  return code === 'freezeout' ? 'NO' : 'Unlimited';
+  return code === 'freezeout' ? FREEZEOUT : 'Unlimited';
 }
 
 // --- サブ構造 -------------------------------------------------------------
