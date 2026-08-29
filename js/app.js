@@ -2608,7 +2608,18 @@
    *                これで自然に開催順にもなる。同じ番号が複数あるのは Day 1A/1B などの
    *                フライトなので日付の昇順で並べる。
    *                特殊イベント(#SP2)とサテライト(#S1)は別系統の採番で、
-   *                通常の番号に混ぜると順番が飛んで見えるため後ろにまとめる。 */
+   *                通常の番号に混ぜると順番が飛んで見えるため後ろにまとめる。
+   *                順番は **通常 → #SP → #S**(運営の指定)。名前順だと #S が #SP より
+   *                前に来てしまうので、下の NUMBER_KINDS で並びを決め打ちにしてある。 */
+
+  /* 番号の系統の並び順。載っていない接頭辞は末尾に回す(運営が新しい表記を
+   * 使い始めても一覧から消えないように)。 */
+  var NUMBER_KINDS = ['', 'SP', 'S'];
+
+  function numberKindRank(kind) {
+    var i = NUMBER_KINDS.indexOf(kind || '');
+    return i === -1 ? NUMBER_KINDS.length : i;
+  }
   function folderGroups(category) {
     var list = (photoFolders || []).filter(function (f) { return f.category === category; });
     var groups = [];
@@ -2628,8 +2639,8 @@
       g.folders.sort(function (a, b) {
         // 番号が読めないフォルダは末尾へ
         if ((a.no == null) !== (b.no == null)) return a.no == null ? 1 : -1;
-        var ak = a.noKind || '', bk = b.noKind || '';
-        if (ak !== bk) return ak < bk ? -1 : 1;   // '' (通常) → 'S' → 'SP'
+        var ak = numberKindRank(a.noKind), bk = numberKindRank(b.noKind);
+        if (ak !== bk) return ak - bk;   // 通常 → #SP → #S
         if (a.no !== b.no) return (a.no || 0) - (b.no || 0);
         return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0);
       });
