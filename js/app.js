@@ -228,7 +228,7 @@
       ['Venue', ev.venue],
       /* Buy-in は subscription.buyin.fee のみを表示する(本体・合計は出さない) */
       ['Buy-in', yen(ev.fee)],
-      ['Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None'],
+      ['Guaranteed', ev.guarantee ? yen(ev.guarantee) : 'None'],
       ['Starting Chips', startingChipsText(ev)],
       ['Level Duration', levelDurationText(ev)],
       /* カードの Reg Close と同じ内容を出す(片方だけ表記が違うと混乱するため) */
@@ -883,7 +883,7 @@
     var summary =
       '<div class="result-summary">' +
       summaryItem(poolLabel, poolKnown ? yen(pool) : 'TBD') +
-      summaryItem('Guarantee', ev.guarantee ? yen(ev.guarantee) : 'None') +
+      summaryItem('Guaranteed', ev.guarantee ? yen(ev.guarantee) : 'None') +
       summaryItem('In the Money', ev.stats.itm > 0 ? ev.stats.itm + ' players' : 'TBD') +
       '</div>';
 
@@ -893,7 +893,7 @@
       ? payoutTable(ev.payouts, hasPoints(ev) ? ev.points : null)
       : modelPayoutTable(pool, poolKnown);
 
-    return summary + '<h3 class="detail-notes-title">Payout</h3>' + table;
+    return summary + '<h3 class="detail-notes-title">Prize</h3>' + table;
   }
 
   /* 順位セル。上位 3 位はメダル表示 */
@@ -2594,10 +2594,52 @@
 
   /* 選択中の種別のフォルダを新しい順に。date は 'YYYY-MM-DD' で桁が揃っているため
    * 文字列のまま比較できる(Date に起こすとタイムゾーンで前日にずれる)。 */
+  /* 写真まとめに出すフォルダを**シリーズ単位**に束ねて返す(運営の指定 2026-08-29)。
+   *
+   * 返す形: [{ series: 'WOLF SERIES of POKER 2026 #02', folders: [...] }, …]
+   *
+   * シリーズ名は BFF が「同じ日・同じ種別の大会のリーグ名」から付けてくる
+   * (`/api/photos` の folders[].series)。取れなかったフォルダは日付を見出しにする
+   * — 名前が無いからといって一覧から消さない。
+   *
+   * 並び:
+   *   シリーズ …… その中で一番新しい日付の降順(直近のシリーズが上)
+   *   シリーズ内 … 番号の**昇順**(#1 → #26)。番号は日をまたいで通しで振られるので、
+   *                これで自然に開催順にもなる。同じ番号が複数あるのは Day 1A/1B などの
+   *                フライトなので日付の昇順で並べる。
+   *                特殊イベント(#SP2)とサテライト(#S1)は別系統の採番で、
+   *                通常の番号に混ぜると順番が飛んで見えるため後ろにまとめる。 */
+  function folderGroups(category) {
+    var list = (photoFolders || []).filter(function (f) { return f.category === category; });
+    var groups = [];
+    var byKey = {};
+    list.forEach(function (f) {
+      var key = f.series || ('date:' + f.date);
+      if (!byKey[key]) {
+        byKey[key] = { label: f.series || dateHeaderFromIso(f.date), newest: f.date, folders: [] };
+        groups.push(byKey[key]);
+      }
+      var g = byKey[key];
+      if (f.date > g.newest) g.newest = f.date;
+      g.folders.push(f);
+    });
+
+    groups.forEach(function (g) {
+      g.folders.sort(function (a, b) {
+        // 番号が読めないフォルダは末尾へ
+        if ((a.no == null) !== (b.no == null)) return a.no == null ? 1 : -1;
+        var ak = a.noKind || '', bk = b.noKind || '';
+        if (ak !== bk) return ak < bk ? -1 : 1;   // '' (通常) → 'S' → 'SP'
+        if (a.no !== b.no) return (a.no || 0) - (b.no || 0);
+        return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0);
+      });
+    });
+    groups.sort(function (a, b) { return a.newest < b.newest ? 1 : (a.newest > b.newest ? -1 : 0); });
+    return groups;
+  }
+
   function categoryFolders(category) {
-    return (photoFolders || [])
-      .filter(function (f) { return f.category === category; })
-      .sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
+    return (photoFolders || []).filter(function (f) { return f.category === category; });
   }
 
   /* 写真まとめを出せる種別か。**クイックリンク行を出す種別(Wolf / 宴)に限る** —
@@ -2673,24 +2715,20 @@
         ? 'Photos are temporarily unavailable.' : 'Loading…');
     }
 
-    var folders = categoryFolders(state.category);
-    if (!folders.length) return head + panelNote('No photos have been published yet.');
+    var groups = folderGroups(state.category);
+    if (!groups.length) return head + panelNote('No photos have been published yet.');
 
-    /* 日付ごとに見出しで区切る(運営の指定)。以前は 1 件ずつ日付を右端に出していたが、
-     * シリーズ中は同じ日に 8 件ほど並ぶので同じ日付が延々と繰り返され、
-     * どこで日が変わるのかが読み取れなかった。見出しは大会一覧と同じものを使う
-     * (フォルダは新しい順に並んでいるので、そのまま走査すれば日付は 1 回ずつしか変わらない)。 */
+    /* 見出しはシリーズ名、その中は大会番号の順(運営の指定)。見出しの見た目は
+     * 大会一覧の日付区切りと同じ帯を使い回す(2 画面で作りが割れないように)。 */
     var items = '';
-    var curDate = null;
-    folders.forEach(function (f) {
-      if (f.date !== curDate) {
-        curDate = f.date;
-        items += dateDividerHtml(dateHeaderFromIso(f.date));
-      }
-      items +=
-        '<button class="photo-folder" type="button" data-photo-folder-open="' + esc(f.id) + '">' +
-        '<span class="pf-title">' + esc(f.title || f.name) + '</span>' +
-        '</button>';
+    groups.forEach(function (g) {
+      items += dateDividerHtml(g.label);
+      g.folders.forEach(function (f) {
+        items +=
+          '<button class="photo-folder" type="button" data-photo-folder-open="' + esc(f.id) + '">' +
+          '<span class="pf-title">' + esc(f.title || f.name) + '</span>' +
+          '</button>';
+      });
     });
     return head + '<div class="photo-folders">' + items + '</div>';
   }
