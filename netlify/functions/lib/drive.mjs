@@ -29,7 +29,8 @@
 //
 // 入出力:
 //   listFolderTree(parentId)              → { events, categories, guides, unnamed, misplaced }
-//     events[].cover … 表紙にする 1 枚目 { id, w, h }(読めなければ null・#102)
+//     events[].cover … 表紙の写真 { id, w, h }。名前が `_cover` で終わるものを優先し、
+//                        無ければ 1 枚目(読めなければ null・#102)
 //   listImages(folderId)                  → [{ id, name, w, h, takenAt }]
 //   listPdfs(folderId)                    → [{ id, name, modifiedTime }](更新日の新しい順)
 //   matchFolder(events, evKey, category)  → 一致したフォルダ(+ match 種別)| null
@@ -338,8 +339,7 @@ export async function listFolderTree(parentId) {
    * 読めなかったフォルダは cover: null にして、そのフォルダだけ表紙なしにする。 */
   const covers = await mapLimit(events, COVER_CONCURRENCY, async (f) => {
     try {
-      const files = await listImages(f.id);
-      return files[0] || null;
+      return pickCover(await listImages(f.id), f.name);
     } catch {
       return null;
     }
@@ -350,6 +350,34 @@ export async function listFolderTree(parentId) {
   });
 
   return { events, categories, guides, unnamed, misplaced };
+}
+
+/* 表紙にする 1 枚を選ぶ(#102)。
+ *
+ * **拡張子を除いた名前が `_cover` で終わるファイル**を優先する(運営の指定)。
+ * Results の優勝 / FT 写真(#80)が `mtNNN_Win` / `mtNNN_FT` で選ばれているのと
+ * 同じ規約で、運営が「一覧に出したい 1 枚」を名前で指定できるようにするため。
+ * 大文字小文字は区別しない(`_COVER` でも当たる)。
+ *
+ * 無ければ**フォルダの 1 枚目**にする。フォルダを開いたときのグリッドと同じ並びの
+ * 先頭なので(listImages が撮影時刻順・時刻が無ければ名前の自然順に並べる)、
+ * 押した表紙が開いた先の 1 枚目と一致する。
+ *
+ * 規約では 1 枚のはずだが、複数あっても壊さず**名前の自然順で先頭**を採り、
+ * 取り違えに気付けるよう警告に残す(#80 と同じ扱い)。 */
+function pickCover(files, folderName) {
+  if (!files.length) return null;
+  const hits = files.filter((f) => /_cover$/i.test(String(f.name || '').replace(/\.[^.]+$/, '')));
+  if (!hits.length) return files[0];
+  hits.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (hits.length > 1) {
+    console.warn(
+      `[photos] ${folderName} に _cover が ${hits.length} 件あります。` +
+        `名前順で先頭の「${hits[0].name}」を表紙にします: ` +
+        hits.map((f) => f.name).join(' / ')
+    );
+  }
+  return hits[0];
 }
 
 /* 配列を limit 件ずつ並列で処理する。62 フォルダを一度に投げると Drive に負荷をかける。
