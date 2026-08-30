@@ -29,6 +29,7 @@
 //
 // 入出力:
 //   listFolderTree(parentId)              → { events, categories, guides, unnamed, misplaced }
+//     events[].cover … 表紙にする 1 枚目 { id, w, h }(読めなければ null・#102)
 //   listImages(folderId)                  → [{ id, name, w, h, takenAt }]
 //   listPdfs(folderId)                    → [{ id, name, modifiedTime }](更新日の新しい順)
 //   matchFolder(events, evKey, category)  → 一致したフォルダ(+ match 種別)| null
@@ -325,7 +326,42 @@ export async function listFolderTree(parentId) {
     }
   });
 
+  /* 各大会フォルダの表紙(= 1 枚目)を索引に含める(#102)。
+   *
+   * 写真まとめがアルバム表示になり、一覧に表紙が要るようになった。**索引に持たせる**
+   * のが要点で、リクエストのたびに 62 フォルダぶんのキャッシュを引くと、温まっていても
+   * その回数だけ往復して数秒かかる(実測 8 秒)。索引ごと 1 つのキャッシュに畳めば、
+   * 閲覧者は 1 回読むだけで済む。索引を作るコスト(実データで 62 往復)は
+   * 10 分ごとの prewarm が負担する。
+   *
+   * 1 枚目の定義はフォルダを開いたときのグリッドと同じ(listImages の並びの先頭)。
+   * 読めなかったフォルダは cover: null にして、そのフォルダだけ表紙なしにする。 */
+  const covers = await mapLimit(events, COVER_CONCURRENCY, async (f) => {
+    try {
+      const files = await listImages(f.id);
+      return files[0] || null;
+    } catch {
+      return null;
+    }
+  });
+  events.forEach((f, i) => {
+    const c = covers[i];
+    f.cover = c ? { id: c.id, w: c.w, h: c.h } : null;
+  });
+
   return { events, categories, guides, unnamed, misplaced };
+}
+
+/* 配列を limit 件ずつ並列で処理する。62 フォルダを一度に投げると Drive に負荷をかける。
+ * 16 なら実データ(62 件)で 4 往復ぶんの待ちで済む。 */
+const COVER_CONCURRENCY = 16;
+
+async function mapLimit(items, limit, fn) {
+  const out = [];
+  for (let i = 0; i < items.length; i += limit) {
+    out.push(...(await Promise.all(items.slice(i, i + limit).map(fn))));
+  }
+  return out;
 }
 
 async function fetchFolders(parentId) {

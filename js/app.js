@@ -2730,16 +2730,30 @@
     if (!groups.length) return head + panelNote('No photos have been published yet.');
 
     /* 見出しはシリーズ名、その中は大会番号の順(運営の指定)。見出しの見た目は
-     * 大会一覧の日付区切りと同じ帯を使い回す(2 画面で作りが割れないように)。 */
+     * 大会一覧の日付区切りと同じ帯を使い回す(2 画面で作りが割れないように)。
+     *
+     * タイルは 2 列で、カード全体が表紙写真。大会名は下に重ねる(#102)。
+     * 日付と枚数は出さない — 日付はシリーズの帯にあり、枚数は開けば分かる。
+     *
+     * 表紙が無いフォルダ(Drive を読めなかった / 写真 0 枚)は、写真の場所を
+     * 空けたまま名前だけ出す。タイルの大きさが揃うので並びが崩れない。 */
     var items = '';
     groups.forEach(function (g) {
       items += dateDividerHtml(g.label);
+      items += '<div class="photo-tiles">';
       g.folders.forEach(function (f) {
+        var cover = f.cover
+          ? '<img class="pt-cover" src="' + esc(f.cover.url) + '"' +
+            ' srcset="' + esc(f.cover.url) + ' 1x, ' + esc(f.cover.url2x) + ' 2x"' +
+            ' alt="" loading="lazy" decoding="async">'
+          : '<span class="pt-cover pt-empty"></span>';
         items +=
-          '<button class="photo-folder" type="button" data-photo-folder-open="' + esc(f.id) + '">' +
-          '<span class="pf-title">' + esc(f.title || f.name) + '</span>' +
+          '<button class="photo-tile" type="button" data-photo-folder-open="' + esc(f.id) + '">' +
+          cover +
+          '<span class="pt-cap"><span class="pt-title">' + esc(f.title || f.name) + '</span></span>' +
           '</button>';
       });
+      items += '</div>';
     });
     return head + '<div class="photo-folders">' + items + '</div>';
   }

@@ -173,6 +173,11 @@ async function respond(eventId) {
             // 番号(#SP2 のような種別つきも分解して返す)。読めなければ null
             no: num ? num.no : null,
             noKind: num ? num.kind : '',
+            /* 表紙(#102)。索引が持っている 1 枚目から URL を組む。
+             * 読めなかったフォルダは null で、フロントは写真の無いタイルにする。 */
+            cover: f.cover
+              ? { url: photoSrc(f.cover, THUMB_W), url2x: photoSrc(f.cover, THUMB2X_W) }
+              : null,
           };
         }),
         stale: folders.stale,
