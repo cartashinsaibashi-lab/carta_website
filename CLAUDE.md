@@ -154,6 +154,13 @@ CDN キャッシュの古さ分だけタイマーがずれる。
 Netlify CDN 向け `Netlify-CDN-Cache-Control`(stale-while-revalidate)の両方。running は 10 秒、
 それ以外は 120 秒、一覧は 30 秒 + SWR 600 秒。
 
+**エラー応答に上流のメッセージを載せない**(#106)。`lib/http.mjs` の `handle()` が返すのは
+`bad request` / `upstream error` / `internal error` の固定文言だけ。PokerLens / Drive の応答本文には
+個人情報が載りうるうえ、参加者 API(`POST /v1/event/{id}/players`)は**本名・会員カード番号・
+チケット QR を必ず返し、項目を絞る手段が無い**(検索オプションに項目選択が無く、`includePlayerInfo` も
+効かない — 実測)。BFF が必要な項目だけ組み直して捨てることに依存しているので、生の本文を素通しする
+経路を作らない。詳細は `console.error` でサーバーログにだけ残す。
+
 **wolf / utage / other の分類**は `behaviour.league.name` の部分一致(`POKERLENS_CATEGORY_WOLF` /
 `_UTAGE`、既定 `wolf,ウルフ` / `utage,宴`)。API に分類フィールドは無い。
 
