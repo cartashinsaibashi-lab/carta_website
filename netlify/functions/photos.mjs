@@ -17,7 +17,7 @@
 // サイト全体の印象を悪くしないようにする。取れないときは前回のキャッシュ、それも
 // 無ければ空配列を返し、フロントは写真タブを出さないだけになる。
 
-import { plGet } from './lib/pokerlens.mjs';
+import { plGet, plPost } from './lib/pokerlens.mjs';
 import { categoryOf } from './lib/adapter.mjs';
 import { config as appConfig } from './lib/config.mjs';
 import {
@@ -43,6 +43,56 @@ export const config = {
 const THUMB_W = 400;
 const THUMB2X_W = 800;
 const FULL_W = 1600;
+
+/* フォルダ名の先頭の番号を分解する(#4 → {kind:'', no:4} / #SP2 → {kind:'SP', no:2})。
+ * 写真まとめの並び替えに使う。番号が読めないフォルダは末尾に回す。 */
+function folderNumber(title) {
+  const m = /^#([A-Za-z]*)(\d+)/.exec(String(title || '').trim());
+  return m ? { kind: (m[1] || '').toUpperCase(), no: Number(m[2]) } : null;
+}
+
+/* 「種別 + 開催日 → シリーズ名」の対応表。写真まとめをシリーズ単位で並べるために使う。
+ *
+ * シリーズ名は大会の `behaviour.league.name`(「WOLF SERIES of POKER 2026 #02」
+ * 「宴 2026/07」)。フォルダ側は名前と日付しか持たないので、大会一覧から引く。
+ * **1 つのシリーズは連続した日程を占め、同じ日・同じ種別に別シリーズは無い**
+ * (実データ: WOLF #02 = 5/27〜5/31 / 宴 2026/07 = 7/30〜8/02 / WOLF #03 = 9/22)。
+ * そのため日付と種別だけで引ける。同じ日に複数のリーグが混ざっていたら、
+ * 大会数が多いほうを採る(判断を止めない)。
+ *
+ * 取得に失敗しても写真は出す — シリーズ名が付かず、フロントが日付で並べるだけになる。 */
+async function seriesByDate() {
+  const map = new Map(); // 'wolf|2026-05-27' → { 名前: 件数 }
+  let page = 1;
+  for (; page <= 6; page++) {
+    const res = await plPost('/v1/event/search', {
+      text: '',
+      includeSummary: false,
+      includeFlights: true,
+      orderBy: 'date',
+      pageIndex: page,
+      pageSize: 500,
+    });
+    const rows = (res && res.results) || [];
+    for (const ev of rows) {
+      const name = (ev.behaviour && ev.behaviour.league && ev.behaviour.league.name) || '';
+      if (!name) continue;
+      const date = String((ev.dailyDetails && ev.dailyDetails.startDate) || '').slice(0, 10);
+      if (!date) continue;
+      const key = categoryOf(ev) + '|' + date;
+      const tally = map.get(key) || {};
+      tally[name] = (tally[name] || 0) + 1;
+      map.set(key, tally);
+    }
+    if (rows.length < 500) break;
+  }
+  const out = new Map();
+  for (const [key, tally] of map) {
+    const best = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+    if (best) out.set(key, best[0]);
+  }
+  return out;
+}
 
 function loadImages(folderId) {
   return cached('folder:' + folderId, () => listImages(folderId));
@@ -98,19 +148,33 @@ async function respond(eventId) {
    * misplaced は**種別フォルダへの移動漏れ**(#72)。ここが空になっていれば移行完了。 */
   if (!eventId) {
     const { events, categories, unnamed, misplaced } = folders.items;
+    /* シリーズ名は写真まとめの見出しに使う。取れなくても写真は出す(名前が付かないだけ)。 */
+    let series = new Map();
+    try {
+      series = await seriesByDate();
+    } catch (err) {
+      console.warn('[photos] シリーズ名を取得できませんでした:', err.message);
+    }
     return json(
       {
         parentFolderId: appConfig.photoFolderId,
         categories: categories.map((c) => ({ id: c.id, name: c.name, category: c.category })),
         misplaced, // 親フォルダ直下に残っていて写真が出ない大会フォルダ
         unnamed, // 命名規約を満たさず写真が出ないフォルダ
-        folders: events.map((f) => ({
-          id: f.id,
-          name: f.name,
-          date: f.date,
-          title: f.title,
-          category: f.category, // 'wolf' | 'utage' | 'other'
-        })),
+        folders: events.map((f) => {
+          const num = folderNumber(f.title);
+          return {
+            id: f.id,
+            name: f.name,
+            date: f.date,
+            title: f.title,
+            category: f.category, // 'wolf' | 'utage' | 'other'
+            series: series.get(f.category + '|' + f.date) || '', // 例「WOLF SERIES of POKER 2026 #02」
+            // 番号(#SP2 のような種別つきも分解して返す)。読めなければ null
+            no: num ? num.no : null,
+            noKind: num ? num.kind : '',
+          };
+        }),
         stale: folders.stale,
       },
       cacheOpts(folders.stale)

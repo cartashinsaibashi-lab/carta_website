@@ -3237,7 +3237,7 @@ body[data-view] .status-filter { display: none; }
   .card-countdown { font-size: 11.5px; }
   .card-headline { padding: 8px 12px 0; }
   .event-card.is-minimal .card-headline { padding: 7px 12px; }
-  .card-title { font-size: 15px; line-height: 1.25; }
+  .card-title { font-size: 14px; line-height: 1.25; }
   .fav-btn { width: 30px; height: 30px; font-size: 17px; }
 
   /* 狭い画面では左右の余白を詰めて、3 項目 × 2 行を折り返さずに収める */
