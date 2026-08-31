@@ -2992,7 +2992,7 @@ body[data-view] .status-filter { display: none; }
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding-bottom: 10px;
+  padding: 10px 0px;
   border-bottom: 1px solid var(--border);
 }
 
