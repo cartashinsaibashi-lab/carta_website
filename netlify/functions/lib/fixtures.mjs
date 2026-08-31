@@ -1148,6 +1148,13 @@ export function mockDriveImages(folderId) {
     files.push(shot('mt002_Win.jpg', 1));
   }
   if (kind === 1) files.push(shot('mt001_FT.jpg', 2));
+
+  /* 写真まとめの表紙(#102)。運営が「一覧に出したい 1 枚」を `_cover` で指定できる
+   * 規約をローカルでも通せるように、一部のフォルダにだけ入れてある。
+   * 入っていないフォルダは 1 枚目が表紙になり、両方の経路を確認できる。
+   * 名前を AS_000 にしているのは、**並びの先頭ではない**ファイルが選ばれることを
+   * 確かめるため(先頭は AS_001)。 */
+  if (kind !== 2) files.push(shot('AS_000_cover.jpg', 5));
   return files;
 }
 
