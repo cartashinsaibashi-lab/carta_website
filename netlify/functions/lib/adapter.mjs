@@ -350,6 +350,20 @@ function buildRegistration(ev) {
   };
 }
 
+/* nickname も preferredName も無いプレイヤーの表示名。**本名は絶対に出さない。**
+ *
+ * 実測(2026-08-31 / 直近 60 大会・ユニーク 393 名)で **全員 privacyAgree: false** =
+ * 本名を公開する同意が無い。それなのに以前はフォールバックが firstname + lastname で、
+ * nickname 未登録の 6 名(1.5%)だけ Results と座席表に本名フルネームが出ていた(#104)。
+ *
+ * 代わりに PokerLens が自動生成する description に落とす。実データでは
+ * イニシャル表記「Y. Y.」が 370 件、firstname が空の当日登録は「Anonymous」が 23 件で、
+ * 393 名すべてに必ず入っている(= 「—」になるのは player ごと欠けているときだけ)。
+ * シリーズランキング(ranking.mjs)は元からこの扱いで、そちらに揃えた。 */
+function fallbackName(pl) {
+  return String(pl.description || '').trim() || '—';
+}
+
 // past 用 results[]
 // players は bare 配列ではなくページング形式 {results:[...]} で返るため両対応。
 export function buildResults(players) {
@@ -360,7 +374,7 @@ export function buildResults(players) {
       const pay = p.payout || {};
       return {
         pos: num(p.position),
-        player: pl.preferredName || pl.nickname || [pl.firstname, pl.lastname].filter(Boolean).join(' ') || '—',
+        player: pl.preferredName || pl.nickname || fallbackName(pl),
         country: pl.countryName || '',
         prize: num(pay.payoutAmount),
         /* バウンティ(賞金首)の獲得額。**フロントでは表示していない**。
@@ -495,7 +509,7 @@ export function buildSeats(players) {
       return {
         table: num(p.tableIndex),
         seat: num(p.seatIndex),
-        player: pl.nickname || pl.preferredName || [pl.firstname, pl.lastname].filter(Boolean).join(' ') || '—',
+        player: pl.nickname || pl.preferredName || fallbackName(pl),
         chips: num(p.chipsCount),
       };
     })

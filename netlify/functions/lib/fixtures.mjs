@@ -199,14 +199,23 @@ const NAMES = [
   ['Noah', 'Kim', 'KR'],
 ];
 
+/* **live の形に合わせてある**(#104)。崩すと mock で通っても live で本名が漏れる。
+ *   - description は PokerLens が自動生成する公開用の表記で、実測 393 名すべてに入っている
+ *     (イニシャル「Y. Y.」370 件 / firstname が空の当日登録は「Anonymous」23 件)。
+ *     nickname が無い人の表示名はここに落ちる。
+ *   - nickname 未登録の人を必ず 1 人混ぜる。実データの未登録率は 6/393(1.5%)しかないが、
+ *     mock で 1 人も出ないと「本名が出ないこと」を画面で確認できない。
+ *   - preferredName は入れない。API のモデルにはあるが **live では 1 件も返らない**
+ *     (キー自体が無い)。入れると mock の Results だけ live と違う経路を通ってしまう。 */
 function makePlayer(i) {
   const [firstname, lastname, code] = NAMES[i % NAMES.length];
   return {
     id: 'pl-' + i,
     firstname,
     lastname,
-    nickname: firstname,
-    preferredName: `${firstname} ${lastname[0]}.`,
+    nickname: i % NAMES.length === 4 ? '' : firstname,
+    description: `${firstname[0]}. ${lastname[0]}.`,
+    privacyAgree: false, // 実測で全員 false(= 本名公開の同意なし)
     countryName: code,
     countryUrl: `https://api.pokerlens.net/v1/country/${code}/flag`,
   };

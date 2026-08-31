@@ -230,6 +230,10 @@ WebSocket 等のプッシュ配信は standard 仕様には見当たらないた
    `#3 (1A) MAIN EVENT DAY 1A` ではなく `flight` が空の親に付く。
 8. **全 218 名が `privacyAgree: false`。** API は本名も返すが、`player.description` に
    `Y. Y.` のイニシャル表記が用意されている。公開サイトでは nickname かイニシャルを使う。
+   直近 60 大会・ユニーク 393 名でも同じ(privacyAgree は全員 false)。内訳は
+   nickname 387 / description 393(イニシャル 370・`Anonymous` 23)/ **`preferredName` は 0 件**
+   (レスポンスにキー自体が無い)。`description` は自由入力ではなく PokerLens 側の自動生成で、
+   `firstname` が空の当日登録だけ `Anonymous` になる(#104)。
 
 ### 認証まわりで確認したこと
 
