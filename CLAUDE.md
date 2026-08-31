@@ -162,6 +162,14 @@ Announcement タブの運用メモ(`Unlimited` / `Level 8 / 18:30` 等)なので
 
 **Buy-in 表示は `subscription.buyin.fee` のみ**(カード・Info タブとも本体/合計は出さない)。
 
+**プレイヤーの表示名に本名(`firstname` / `lastname`)を出さない**(#104)。実測(2026-08-31 /
+直近 60 大会・ユニーク 393 名)で**全員 `privacyAgree: false`** = 本名公開の同意が無い。
+表示名は `nickname`(387/393)、無ければ PokerLens が自動生成する `description`
+(イニシャル「Y. Y.」370 件 / firstname が空の当日登録は「Anonymous」23 件で、393 名すべてに入る)。
+`preferredName` は API のモデルにはあるが **live では 1 件も返らない**(キー自体が無い)。
+Results / 座席表 / POS ランキングの 3 か所すべてがこの規則で、adapter の `fallbackName()` に集約してある。
+かつては `nickname || 本名` だったため、未登録の 6 名(1.5%)だけ本名フルネームが出ていた。
+
 **日をまたぐ大会の「通過日」は Prize を出してはいけない**。Day 1A などのレコードに紐づく
 `payout` は**大会全体の最終成績の賞金**で、その日の成績ではない。実データ
 (`#3 (1A) MAIN EVENT DAY 1A` / 2026-05-27)では 1 位 ¥60,000・3 位 ¥600,000 と、
