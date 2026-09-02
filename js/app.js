@@ -261,8 +261,13 @@
     /* 説明文はティッカー(横に流れる 1 行)で出す。長い説明でもカードの高さを取らない。
      * 文は 1 つだけで、右端から入って左端へ抜けきるまでを 1 周とする。
      * 短くて収まる説明は流さない(判定と速度は syncTickers が行う)。
-     * 説明文が未入力の大会(2 割ほどある)では要素ごと出さない。 */
-    var descHtml = ev.description
+     * 説明文が未入力の大会(2 割ほどある)では要素ごと出さない。
+     *
+     * 終了した大会では出さない(#108)。中身は dailyDetails.levelDescription =
+     * これから参加する人へ向けた案内(受付・スタック・再入場の条件など)なので、
+     * 終わったあとに読む意味が無いうえ、横に動くものが残ると目障りになる。
+     * 通過日(Day 1A など)もその日は終わっているので status = past のまま出さない。 */
+    var descHtml = (ev.description && ev.status !== 'past')
       ? '<div class="event-ticker">' +
         '<div class="event-ticker-track">' +
         '<span class="event-ticker-item">' + esc(ev.description) + '</span>' +
