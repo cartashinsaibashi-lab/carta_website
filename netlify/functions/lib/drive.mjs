@@ -2,10 +2,17 @@
 //
 // Drive 側の運用(顧客と合意済み):
 //   親フォルダ … 「リンクを知っている全員が閲覧可」で共有。ID は PHOTO_DRIVE_FOLDER_ID
-//     └ 「WOLF」/「宴」/「歌留多」… 種別フォルダ。**この 1 段で大会写真の種別が決まる**
-//          ├ 「Play Guide」… Player's Guide の PDF 置き場(写真ではない。#73 でここから PDF を出す)
-//          └ 「YYYY-MM-DD #番号 大会名」… 大会 1 つにつき 1 フォルダ
-//               └ 写真ファイル
+//     ├ 「WOLF」/「宴」… 種別フォルダ。**この 1 段で大会写真の種別が決まる**
+//     │    ├ 「Play Guide」… Player's Guide の PDF 置き場(写真ではない。#73 でここから PDF を出す)
+//     │    └ 「2026 #02」… シリーズフォルダ(#114)
+//     │         └ 「YYYY-MM-DD #番号 大会名」… 大会 1 つにつき 1 フォルダ
+//     │              └ 写真ファイル
+//     └ 「歌留多」… 種別フォルダ。**シリーズフォルダを挟まず**大会フォルダが直下(#114)
+//
+// **段数は種別ごとに固定**(2026-09-03 運営決定)。WOLF と宴はシリーズフォルダ配下に統一し、
+// 歌留多は従来どおり種別フォルダ直下に大会フォルダを置く。どちらの形も受け付ける作りにすると
+// 「置き場所を間違えても静かに動いてしまう」ため、種別ごとに決め打ちして、外れているものは
+// misplaced として警告に出す(= 運営に直してもらう)。
 //
 // 番号は運営の管理表記で、通常大会は「#12」、特殊イベントは「#SP2」、
 // サテライトは「#S1」(#82)。PokerLens の管理画面の No. は数値しか入らないため
@@ -144,6 +151,16 @@ export function normalizeTitle(s) {
  * 日付として読めなければ null を返し、呼び出し側が「命名ミス」としてログに出す。 */
 const FOLDER_RE = /^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})[\s_－-]*(.*)$/;
 
+/* 「YYYY-MM-DD-DD 名前」= 期間フォルダ(#114)。シリーズ全期間を通して撮る写真を
+ * 運営がこの形で作る(実データ: `2026-09-22-27 Branding` / `Guest` / `Staff`)。
+ * 終わりの日を名前から外すのが目的 — 外さないと FOLDER_RE が日付の後ろを名前とみなし、
+ * 写真まとめに「27 Branding」というアルバム名で並んでしまう。
+ * 日付は先頭(期間の初日)を採る。大会との照合は開催日で行うが、これらは大会に対応する
+ * フォルダではないので、どの日を採っても照合結果は変わらない。
+ * 区切りが空白の「2026-05-27 26 LAST EVENT」(番号が # 無しで続く形)を巻き込まないよう、
+ * 区切り記号は空白を含めず、終わりの日の後ろは空白か終端に限る。 */
+const FOLDER_RANGE_RE = /^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})[-~\u301c\uff5e](\d{2})(?=[\s_－]|$)[\s_－-]*(.*)$/;
+
 /* 大会名の先頭に付く番号トークン(#82)。運営が実際に書いている書式:
  *   「#12」通常大会 /「#SP2」特殊イベント /「#S1」サテライト /「#3/A」フライト
  * # を省いた「12 大会名」も拾う。ただし**英字だけの「SP 大会名」は番号とみなさない** —
@@ -159,9 +176,12 @@ const FOLDER_NO_RE = /^(?:#\s*[A-Za-z]{0,3}\d{0,3}|[A-Za-z]{0,3}\d{1,3})(?:\/[A-
 const FOLDER_FLIGHT_RE = /^[(（][^)）]{1,6}[)）]\s*/;
 
 export function parseFolderName(name) {
-  const m = FOLDER_RE.exec(String(name || '').trim());
+  const raw = String(name || '').trim();
+  const range = FOLDER_RANGE_RE.exec(raw);
+  const m = range || FOLDER_RE.exec(raw);
   if (!m) return null;
-  const [, y, mo, d, rest] = m;
+  // 期間フォルダは 5 つ目が名前(4 つ目は終わりの日で、名前からは外す)
+  const [, y, mo, d, rest] = range ? [m[0], m[1], m[2], m[3], m[5]] : m;
   if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return null;
   const title = rest.trim();
   return {
@@ -273,20 +293,30 @@ function toEventFolder(f, parsed, category) {
   };
 }
 
-/* 親フォルダ配下のフォルダを、種別フォルダ 1 段を降りて集める(#72)。
+/* シリーズフォルダを挟む種別(#114)。ここに載っている種別では、大会フォルダは
+ * 「種別 / シリーズ / 大会」の 3 段目にある。載っていない種別(歌留多)は従来どおり 2 段。
+ * 運営の運用がそう決まっている(2026-09-03)ので、形を見て自動で切り替えるのではなく
+ * 種別ごとに決め打ちする — 自動判別にすると置き場所の間違いが警告に出ず、
+ * 「写真が出ないまま気付かれない」事故に戻ってしまう。 */
+const SERIES_CATEGORIES = ['wolf', 'utage'];
+
+/* 親フォルダ配下のフォルダを、種別フォルダ(と、種別によってはシリーズフォルダ)を
+ * 降りて集める(#72 / #114)。
  *
  * 返り値:
  *   events     … 大会フォルダ [{ id, name, date, title, norm, category }]
  *   categories … 見つかった種別フォルダ [{ id, name, category }]
  *   guides     … 種別フォルダ直下の Player's Guide フォルダ [{ id, name, category }](#73)。
  *                中の PDF は listPdfs() で開くたびに探す — ここでは場所だけ返す
- *   unnamed    … 命名規約を満たさないフォルダ名(写真が出ない)
- *   misplaced  … 親フォルダ直下に残っている大会フォルダ名。種別が決まらないので写真が
- *                出ない = 種別フォルダへの移動漏れ。呼び出し側が警告に出す(黙って捨てない)
+ *   unnamed    … 命名規約を満たさないフォルダ名(写真が出ない)。どこにあるかが分かるように
+ *                「WOLF/2026 #02/名前」の形で返す
+ *   misplaced  … 置き場所が違う大会フォルダ名。親フォルダ直下(種別が決まらない)と、
+ *                シリーズを挟む種別の種別フォルダ直下(移行漏れ)の 2 つ。どちらも写真が
+ *                出ないので、呼び出し側が警告に出す(黙って捨てない)
  *
- * Drive の読み取りは「親 1 回 + 種別フォルダの数」。種別は 3 つなので最大 4 往復で、
- * 結果は photos.mjs が Blobs に 10 分キャッシュするため閲覧者が増えても回数は増えない。
- * 種別フォルダの取得は並列にする(直列だと 3 往復ぶん待ち時間が積み上がる)。 */
+ * Drive の読み取りは「親 1 回 + 種別の数 + シリーズフォルダの数」。実データで 1 + 3 + 数個 なので
+ * 10 往復程度で、結果は photos.mjs が Blobs に 10 分キャッシュするため閲覧者が増えても
+ * 回数は増えない。同じ段の取得は並列にする(直列だとその数だけ待ち時間が積み上がる)。 */
 export async function listFolderTree(parentId) {
   const top = config.isMock ? mockDriveFolders(parentId) : await fetchFolders(parentId);
 
@@ -295,6 +325,7 @@ export async function listFolderTree(parentId) {
   const guides = [];
   const unnamed = [];
   const misplaced = [];
+  const series = [];   // { id, name, category, path } シリーズフォルダ(降りる先)
 
   for (const f of top) {
     const cat = folderCategory(f.name);
@@ -315,15 +346,36 @@ export async function listFolderTree(parentId) {
   );
 
   categories.forEach((c, i) => {
+    const hasSeries = SERIES_CATEGORIES.indexOf(c.category) !== -1;
     for (const f of children[i]) {
-      // Player's Guide の置き場。写真ではないので大会フォルダには入れず、場所だけ控える(#73)
+      // Player's Guide の置き場。シリーズを挟む種別でも**種別フォルダ直下**のまま(#73)
       if (isGuideFolder(f.name)) {
         guides.push({ id: f.id, name: f.name, category: c.category });
         continue;
       }
       const parsed = parseFolderName(f.name);
-      if (parsed) events.push(toEventFolder(f, parsed, c.category));
-      else unnamed.push(`${c.name}/${f.name}`);
+      if (!hasSeries) {
+        // 歌留多: 大会フォルダが種別フォルダ直下にある
+        if (parsed) events.push(toEventFolder(f, parsed, c.category));
+        else unnamed.push(`${c.name}/${f.name}`);
+        continue;
+      }
+      /* WOLF / 宴: ここにあるのはシリーズフォルダのはず。大会フォルダ名として読めるものは
+       * シリーズフォルダへの移動漏れなので、降りずに misplaced に入れて警告に出す。 */
+      if (parsed) misplaced.push(`${c.name}/${f.name}`);
+      else series.push({ id: f.id, name: f.name, category: c.category, path: `${c.name}/${f.name}` });
+    }
+  });
+
+  const seriesChildren = await Promise.all(
+    series.map((s) => (config.isMock ? mockDriveFolders(s.id) : fetchFolders(s.id)))
+  );
+
+  series.forEach((s, i) => {
+    for (const f of seriesChildren[i]) {
+      const parsed = parseFolderName(f.name);
+      if (parsed) events.push(toEventFolder(f, parsed, s.category));
+      else unnamed.push(`${s.path}/${f.name}`);
     }
   });
 
