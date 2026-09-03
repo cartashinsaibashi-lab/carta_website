@@ -151,6 +151,16 @@ export function normalizeTitle(s) {
  * 日付として読めなければ null を返し、呼び出し側が「命名ミス」としてログに出す。 */
 const FOLDER_RE = /^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})[\s_－-]*(.*)$/;
 
+/* 「YYYY-MM-DD-DD 名前」= 期間フォルダ(#114)。シリーズ全期間を通して撮る写真を
+ * 運営がこの形で作る(実データ: `2026-09-22-27 Branding` / `Guest` / `Staff`)。
+ * 終わりの日を名前から外すのが目的 — 外さないと FOLDER_RE が日付の後ろを名前とみなし、
+ * 写真まとめに「27 Branding」というアルバム名で並んでしまう。
+ * 日付は先頭(期間の初日)を採る。大会との照合は開催日で行うが、これらは大会に対応する
+ * フォルダではないので、どの日を採っても照合結果は変わらない。
+ * 区切りが空白の「2026-05-27 26 LAST EVENT」(番号が # 無しで続く形)を巻き込まないよう、
+ * 区切り記号は空白を含めず、終わりの日の後ろは空白か終端に限る。 */
+const FOLDER_RANGE_RE = /^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})[-~\u301c\uff5e](\d{2})(?=[\s_－]|$)[\s_－-]*(.*)$/;
+
 /* 大会名の先頭に付く番号トークン(#82)。運営が実際に書いている書式:
  *   「#12」通常大会 /「#SP2」特殊イベント /「#S1」サテライト /「#3/A」フライト
  * # を省いた「12 大会名」も拾う。ただし**英字だけの「SP 大会名」は番号とみなさない** —
@@ -166,9 +176,12 @@ const FOLDER_NO_RE = /^(?:#\s*[A-Za-z]{0,3}\d{0,3}|[A-Za-z]{0,3}\d{1,3})(?:\/[A-
 const FOLDER_FLIGHT_RE = /^[(（][^)）]{1,6}[)）]\s*/;
 
 export function parseFolderName(name) {
-  const m = FOLDER_RE.exec(String(name || '').trim());
+  const raw = String(name || '').trim();
+  const range = FOLDER_RANGE_RE.exec(raw);
+  const m = range || FOLDER_RE.exec(raw);
   if (!m) return null;
-  const [, y, mo, d, rest] = m;
+  // 期間フォルダは 5 つ目が名前(4 つ目は終わりの日で、名前からは外す)
+  const [, y, mo, d, rest] = range ? [m[0], m[1], m[2], m[3], m[5]] : m;
   if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return null;
   const title = rest.trim();
   return {
