@@ -185,6 +185,20 @@ Results / 座席表 / POS ランキングの 3 か所すべてがこの規則で
 サマリーは In the Money ではなく **Remaining(翌日へ進む人数)**。**Prize タブ自体は出す** —
 出さないのは Results の賞金であって、ペイアウト表は通過日にも見たい(運営の指定)。
 
+**Prize タブを出すかは「大会が終わったか」ではなく「Results に賞金が出ているか」で決める**(#109)。
+終了した大会(単日・複数日の最終日)の Results は Rank / Player / Prize (/ Points) を出しており、
+ペイアウト表と同じ賞金が 2 か所に並ぶため隠す。Results の表示は上位 9 位までだが、
+**賞金が付く順位のぶんだけ自動で広がる**(`finalResultTable()` の `lastPlace`)ので情報は落ちない。
+隠さないのは通過日と、**結果がまだ入っていない終了大会**(Results タブ自体を出さないので、
+Prize まで隠すと賞金がどこにも出なくなる)。条件は
+`ev.status !== 'past' || ev.carryOver || (ev._detail === 'loaded' && !ev.results.length)`。
+**結果の有無は詳細が届いてから見る** — 一覧は `results` を空で返すので、取得前は
+Results を出したまま / Prize を隠したままにしておく(多数派に合わせておかないと、
+開いた直後にタブが増減して位置が動く)。
+**Prize サマリーは Guaranteed と In the Money の 2 枚**(先頭にあった Prize Pool は、
+受付中に保証額と同額のカードが 2 枚並ぶため廃止。開催中・通過日の実額は Live / Survivors の
+サマリーに出ている)。
+
 **通過日かどうかの判定は `summaryId` でグループ化し `dailyDetails.day` の最大値と比べる**(#54)。
 `summaryId` は同じ大会の全日程が共有する親レコードのキーで、946 件中 70 件
 (= `behaviour.isFlight` が true の日別レコード)にだけ入る。詳細では

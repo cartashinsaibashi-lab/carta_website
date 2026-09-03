@@ -136,15 +136,40 @@
     /* 通過日(日をまたぐ大会の最終日以外)はその日の成績が確定しないので、
      * タブ名を Survivors にして「翌日に進む人の一覧」であることを示す(#54)。
      * key は 'results' のまま — 再描画をまたいで選択タブを覚える state.openedTab や
-     * 既存のパネル分岐がこのキーを使っており、変えると開き直しでタブが Info に戻る。 */
-    if (ev.status === 'past') {
+     * 既存のパネル分岐がこのキーを使っており、変えると開き直しでタブが Info に戻る。
+     *
+     * 結果が入っている大会にだけ出す(#109)。終了扱いでも運営が結果を入れるまで results は
+     * 空で、そのまま出すと見出しだけの空の表になる。ただし**詳細が届くまでは出したまま**に
+     * する — 一覧は results を空で返す(浅い一覧)ので、中身の有無は _detail が 'loaded' に
+     * なるまで判別できない。取得前に隠すと、終了した大会を開いた瞬間は Info が選ばれ、
+     * あとから結果が届いても選択は Info のままになる。 */
+    if (ev.status === 'past' && (ev._detail !== 'loaded' || ev.results.length)) {
       tabs.push({ key: 'results', label: ev.carryOver ? 'Survivors' : 'Results' });
     }
     tabs.push({ key: 'info', label: 'Info' });
-    /* Prize タブは通過日にも出す。#44 で一度隠したが、あれは「通過日の Results に
-     * 賞金を出さない」という話で、ペイアウト表そのものは通過日にも見たい(運営の指定)。
-     * この日のレコードに紐づくペイアウトは大会全体のもので、賞金額としては正しい。 */
-    tabs.push({ key: 'prize', label: 'Prize' });
+    /* Prize タブを出すかは「大会が終わったか」ではなく「Results に賞金が出ているか」で決める
+     * (#109)。終了した大会の Results は Rank / Player / Prize (/ Points) を出していて、
+     * ペイアウト表と同じ賞金が 2 か所に並ぶため隠す。Results の表示は上位 9 位までだが、
+     * 賞金が付く順位のぶんだけ自動で広がる(finalResultTable() の lastPlace)ので、
+     * 隠しても賞金の情報は落ちない。
+     *
+     * 隠さない場合が 2 つある。
+     *  - 通過日。その日の Results は Survivors(Rank / Player / Chips)で賞金を出さないため、
+     *    ペイアウト表が賞金を見られる唯一の場所になる。#44 で一度隠したのは「通過日の
+     *    Results に賞金を出さない」という話で、ペイアウト表そのものは通過日にも見たい
+     *    (運営の指定)。この日のレコードに紐づくペイアウトは大会全体のもので金額としては正しい
+     *  - 結果がまだ入っていない終了大会。Results タブ自体が出ないので、ここを隠すと
+     *    賞金がどこにも出なくなる
+     *
+     * 結果の有無は詳細が届いてから(_detail === 'loaded')見る。取得前は「結果あり」とみなして
+     * 隠す — 終了した大会の大半は結果が入っており、先に出してから消すと Structure や Photos の
+     * 位置が動いて押し間違えるため。
+     *
+     * 選択中のタブが消える場合は、cardHtml() が state.openedTab を tabsFor() の結果と
+     * 突き合わせて先頭のタブに戻す。 */
+    if (ev.status !== 'past' || ev.carryOver || (ev._detail === 'loaded' && !ev.results.length)) {
+      tabs.push({ key: 'prize', label: 'Prize' });
+    }
     tabs.push({ key: 'structure', label: 'Structure' });
     /* 写真タブは Drive に写真があった大会にだけ出す。写真は運営が任意で上げるもので、
      * 大半の大会には無いため、常設すると「開いても空」のタブばかりになる。
@@ -878,16 +903,23 @@
     return 'style="--sx:' + (-Math.sin(th)).toFixed(4) + ';--cy:' + Math.cos(th).toFixed(4) + '"';
   }
 
-  /* 賞金分配(Prize)パネル — 開催中・受付中・終了の全大会に共通で表示。
+  /* 賞金分配(Prize)パネル — 受付中・開催中と通過日、それに結果がまだ入っていない終了大会に
+   * 出す(結果が入っている終了大会は Results と内容が重複するのでタブごと出さない。
+   * 条件は tabsFor() 参照)。
    * GET /v1/event/{id}/payouts の確定ペイアウトを優先し、未設定の大会だけ
    * 標準配分モデルにフォールバックする。 */
   function prizePanel(ev) {
     var pool = ev.stats.prizePool || ev.guarantee || 0;   // 受付中は保証賞金を基準に表示
     var poolKnown = pool > 0;
-    var poolLabel = ev.status === 'future' ? 'Guaranteed Prize Pool' : 'Prize Pool';
+    /* サマリーは Guaranteed と In the Money の 2 枚(#109)。以前は先頭に Prize Pool
+     * (受付中は Guaranteed Prize Pool)も置いていたが、受付中は賞金プールが保証額そのもの
+     * なので、まったく同じ金額のカードが 2 枚並んでいた。開催中と通過日は実額が入って値は
+     * 変わるものの、その実額は Live タブと Survivors タブのサマリーにそれぞれ出ているため
+     * ここから消しても情報は落ちない。
+     * 2 枚にすると iPhone 12(390px)でも 1 行に収まる(.summary-item は flex: 1 /
+     * min-width: 140px で、3 枚だと 2 枚 + 1 枚に折り返していた)。 */
     var summary =
       '<div class="result-summary">' +
-      summaryItem(poolLabel, poolKnown ? yen(pool) : 'TBD') +
       summaryItem('Guaranteed', ev.guarantee ? yen(ev.guarantee) : 'None') +
       summaryItem('In the Money', ev.stats.itm > 0 ? ev.stats.itm + ' players' : 'TBD') +
       '</div>';
