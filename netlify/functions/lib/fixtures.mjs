@@ -1059,8 +1059,27 @@ function mockCategoryOf(ev) {
  * この大会は mock では Photos タブが出ない — それが正しい挙動。 */
 const MOCK_MISPLACED_EVENT_ID = 'evt-wolf-final';
 
-/* フォルダ一覧。parentId が種別フォルダなら大会フォルダを、それ以外(= 親フォルダ)なら
- * 種別フォルダ + 移動し忘れた大会フォルダを返す。
+/* シリーズフォルダへ移し忘れた大会を 1 件だけ作る(#114)。
+ * WOLF / 宴 の大会フォルダはシリーズフォルダの中に置く決まりで、種別フォルダ直下に
+ * 残っているものは読まない。live でも宴が移行の途中で同じ形になっていた(2026-09-03 実測)
+ * ので、その警告経路をローカルでも通せるようにしてある。
+ * この大会も mock では Photos タブが出ない。 */
+const MOCK_MISPLACED_IN_CATEGORY_EVENT_ID = 'evt-utage-break';
+
+/* シリーズフォルダ(#114)。WOLF と宴だけが持ち、歌留多は種別フォルダ直下に
+ * 大会フォルダを置く — 段数は種別ごとに固定(drive.mjs の SERIES_CATEGORIES)。
+ * 名前は live に合わせた運営の表記(「2026 #02」「2026/07」)。
+ * シリーズ名の表示は PokerLens のリーグ名から作るので、この名前は画面には出ない。 */
+const MOCK_SERIES_FOLDERS = [
+  { id: 'mockfolder-series-wolf', name: '2026 #01', category: 'wolf' },
+  { id: 'mockfolder-series-utage', name: '2026/09', category: 'utage' },
+];
+
+/* フォルダ一覧。parentId によって返すものが変わる(#114):
+ *   親フォルダ           … 種別フォルダ + 移動し忘れた大会フォルダ + 命名ミスのフォルダ
+ *   種別(WOLF / 宴)      … シリーズフォルダ + Play Guide(+ 移し忘れの大会フォルダ)
+ *   種別(歌留多)         … 大会フォルダ(シリーズフォルダを挟まない)
+ *   シリーズフォルダ     … その種別の大会フォルダ
  *
  * **開催予定の大会にもフォルダを作る**。告知画像を先に載せる運用があるため、
  * フロントは状態で絞らず写真を取りに行くようになった(#48)。以前は
@@ -1080,13 +1099,33 @@ export function mockDriveFolders(parentId) {
   };
 
   const events = buildEvents(Date.now()).filter(
-    (e) => e.id !== 'evt-wolf-sat' && e.id !== MOCK_MISPLACED_EVENT_ID
+    (e) =>
+      e.id !== 'evt-wolf-sat' &&
+      e.id !== MOCK_MISPLACED_EVENT_ID &&
+      e.id !== MOCK_MISPLACED_IN_CATEGORY_EVENT_ID
   );
+
+  // シリーズフォルダ直下 = その種別の大会フォルダ(#114)
+  const series = MOCK_SERIES_FOLDERS.find((s) => s.id === parentId);
+  if (series) {
+    return events.filter((e) => mockCategoryOf(e) === series.category).map(eventFolder);
+  }
 
   const cat = MOCK_CATEGORY_FOLDERS.find((c) => c.id === parentId);
   if (cat) {
-    const folders = events.filter((e) => mockCategoryOf(e) === cat.category).map(eventFolder);
-    // Player's Guide の置き場。写真ではないので大会フォルダから外れることの確認用。
+    const folders = [];
+    const s = MOCK_SERIES_FOLDERS.find((x) => x.category === cat.category);
+    if (s) {
+      // WOLF / 宴: 大会フォルダはこの下(シリーズフォルダの中)にある
+      folders.push({ id: s.id, name: s.name, mimeType: 'application/vnd.google-apps.folder' });
+      // シリーズフォルダへの移し忘れ。読まれずに misplaced の警告に出るのが正しい挙動
+      const late = buildEvents(Date.now()).find((e) => e.id === MOCK_MISPLACED_IN_CATEGORY_EVENT_ID);
+      if (late && mockCategoryOf(late) === cat.category) folders.push(eventFolder(late));
+    } else {
+      // 歌留多: 大会フォルダが種別フォルダ直下(この種別だけ 2 段のまま)
+      folders.push(...events.filter((e) => mockCategoryOf(e) === cat.category).map(eventFolder));
+    }
+    // Player's Guide の置き場。シリーズを挟む種別でも**種別フォルダ直下**のまま。
     // その他(歌留多)には Guide を置かない運用なので mock も揃える。
     if (cat.category !== 'other') {
       folders.push({

@@ -145,7 +145,9 @@ async function respond(eventId) {
   /* 引数なし: フォルダ一覧をそのまま返す。運営が付けたフォルダ名がこちらでどう
    * 解釈されているか(日付を読めているか・どの種別に入っているか)を、
    * 実際に大会を開かずに確認するため。
-   * misplaced は**種別フォルダへの移動漏れ**(#72)。ここが空になっていれば移行完了。 */
+   * misplaced は**置き場所の間違い**(#72 / #114)。親フォルダ直下に残っているものと、
+   * WOLF / 宴 の種別フォルダ直下(シリーズフォルダへの移し忘れ)の両方が入る。
+   * ここが空になっていれば移行完了。 */
   if (!eventId) {
     const { events, categories, unnamed, misplaced } = folders.items;
     /* シリーズ名は写真まとめの見出しに使う。取れなくても写真は出す(名前が付かないだけ)。 */
@@ -159,7 +161,7 @@ async function respond(eventId) {
       {
         parentFolderId: appConfig.photoFolderId,
         categories: categories.map((c) => ({ id: c.id, name: c.name, category: c.category })),
-        misplaced, // 親フォルダ直下に残っていて写真が出ない大会フォルダ
+        misplaced, // 置き場所が違って写真が出ない大会フォルダ(親フォルダ直下 / シリーズの外)
         unnamed, // 命名規約を満たさず写真が出ないフォルダ
         folders: events.map((f) => {
           const num = folderNumber(f.title);
