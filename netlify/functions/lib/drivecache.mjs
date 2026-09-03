@@ -16,12 +16,22 @@
 import { config as appConfig } from './config.mjs';
 import { listFolderTree } from './drive.mjs';
 
-/* Blobs キャッシュの有効期間。
+/* Blobs キャッシュの有効期間(読み手が受け入れる上限)。
  * 写真は大会終了後にまとめてアップされるだけで、秒単位の鮮度は要らない。
  * 一方で「掲載を取り下げたい」という依頼は Drive からファイルを消して対応する運用に
- * するため、長すぎると消えるまでの時間が延びる。その折り合いで 10 分にしている。
- * Player's Guide の PDF 差し替え(#73)が反映されるまでの時間も同じくここで決まる。 */
-export const CACHE_MS = 10 * 60e3;
+ * するため、長すぎると消えるまでの時間が延びる。
+ * Player's Guide の PDF 差し替え(#73)が反映されるまでの時間も同じくここで決まる。
+ *
+ * **prewarm の間隔(10 分)より長くしてある**(#114)。実際の更新は prewarm が 10 分ごとに
+ * 作り直すので反映は従来どおり 10 分だが、ここを 10 分ちょうどにすると
+ * 「prewarm が来る直前に期限切れ」になり、その瞬間に来た閲覧者が索引づくり
+ * (Drive 6 秒 + シリーズ名 7.6 秒)を背負ってしまう。読み手側に猶予を持たせて、
+ * 作り直しは必ず prewarm 側で起きるようにする。 */
+export const CACHE_MS = 15 * 60e3;
+
+/* prewarm が「作り直す」と判断する古さ。prewarm の間隔(10 分)より短くしておくと、
+ * 毎回必ず作り直して CACHE_MS に達する前に入れ替わる。 */
+export const PREWARM_MAX_AGE_MS = 5 * 60e3;
 
 /* フォルダ索引のキャッシュキー。
  * **保存する形が変わったら必ず名前も変える。** #72 で配列から
@@ -47,10 +57,12 @@ async function cacheStore() {
   return _store;
 }
 
-/* キャッシュ越しに Drive を読む。
+/* キャッシュ越しに読む(Drive の索引・ファイル一覧と、写真まとめのシリーズ名)。
+ * maxAgeMs には「これより古ければ作り直す」を渡す。既定は読み手向けの CACHE_MS で、
+ * prewarm だけは短い値(PREWARM_MAX_AGE_MS)を渡して先に作り直す。
  * mock ではキャッシュを挟まない(fixtures は「今」を基準に日付を組み立てるため、
  * 保存すると時間の経過でフォルダ名の日付が実際の大会とずれる)。 */
-export async function cached(key, load) {
+export async function cached(key, load, maxAgeMs = CACHE_MS) {
   if (appConfig.isMock) return { items: await load(), stale: false, fetched: true };
 
   const store = await cacheStore();
@@ -62,7 +74,7 @@ export async function cached(key, load) {
       /* 読めなければ取得しに行くだけ */
     }
   }
-  if (rec && Date.now() - rec.at < CACHE_MS) return { items: rec.items, stale: false, fetched: false };
+  if (rec && Date.now() - rec.at < maxAgeMs) return { items: rec.items, stale: false, fetched: false };
 
   try {
     const items = await load();
@@ -86,8 +98,8 @@ export async function cached(key, load) {
  * 命名規約(先頭に YYYY-MM-DD)を満たさないフォルダは、写真が出ないまま気付かれない
  * ことになるので警告に出す。Drive を実際に見に行ったときだけログするので、
  * キャッシュが効いている間は繰り返さない。 */
-export async function loadFolders() {
-  const res = await cached(FOLDERS_KEY, () => listFolderTree(appConfig.photoFolderId));
+export async function loadFolders(maxAgeMs) {
+  const res = await cached(FOLDERS_KEY, () => listFolderTree(appConfig.photoFolderId), maxAgeMs);
   if (res.fetched) {
     if (res.items.unnamed.length) {
       console.warn(

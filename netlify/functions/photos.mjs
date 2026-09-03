@@ -17,7 +17,7 @@
 // サイト全体の印象を悪くしないようにする。取れないときは前回のキャッシュ、それも
 // 無ければ空配列を返し、フロントは写真タブを出さないだけになる。
 
-import { plGet, plPost } from './lib/pokerlens.mjs';
+import { plGet } from './lib/pokerlens.mjs';
 import { categoryOf } from './lib/adapter.mjs';
 import { config as appConfig } from './lib/config.mjs';
 import {
@@ -28,6 +28,7 @@ import {
   DriveError,
 } from './lib/drive.mjs';
 import { cached, loadFolders } from './lib/drivecache.mjs';
+import { seriesMap } from './lib/series.mjs';
 import { json, handle } from './lib/http.mjs';
 
 /* :eventId と folder/:folderId はセグメント数が違うので取り違えは起きない
@@ -49,49 +50,6 @@ const FULL_W = 1600;
 function folderNumber(title) {
   const m = /^#([A-Za-z]*)(\d+)/.exec(String(title || '').trim());
   return m ? { kind: (m[1] || '').toUpperCase(), no: Number(m[2]) } : null;
-}
-
-/* 「種別 + 開催日 → シリーズ名」の対応表。写真まとめをシリーズ単位で並べるために使う。
- *
- * シリーズ名は大会の `behaviour.league.name`(「WOLF SERIES of POKER 2026 #02」
- * 「宴 2026/07」)。フォルダ側は名前と日付しか持たないので、大会一覧から引く。
- * **1 つのシリーズは連続した日程を占め、同じ日・同じ種別に別シリーズは無い**
- * (実データ: WOLF #02 = 5/27〜5/31 / 宴 2026/07 = 7/30〜8/02 / WOLF #03 = 9/22)。
- * そのため日付と種別だけで引ける。同じ日に複数のリーグが混ざっていたら、
- * 大会数が多いほうを採る(判断を止めない)。
- *
- * 取得に失敗しても写真は出す — シリーズ名が付かず、フロントが日付で並べるだけになる。 */
-async function seriesByDate() {
-  const map = new Map(); // 'wolf|2026-05-27' → { 名前: 件数 }
-  let page = 1;
-  for (; page <= 6; page++) {
-    const res = await plPost('/v1/event/search', {
-      text: '',
-      includeSummary: false,
-      includeFlights: true,
-      orderBy: 'date',
-      pageIndex: page,
-      pageSize: 500,
-    });
-    const rows = (res && res.results) || [];
-    for (const ev of rows) {
-      const name = (ev.behaviour && ev.behaviour.league && ev.behaviour.league.name) || '';
-      if (!name) continue;
-      const date = String((ev.dailyDetails && ev.dailyDetails.startDate) || '').slice(0, 10);
-      if (!date) continue;
-      const key = categoryOf(ev) + '|' + date;
-      const tally = map.get(key) || {};
-      tally[name] = (tally[name] || 0) + 1;
-      map.set(key, tally);
-    }
-    if (rows.length < 500) break;
-  }
-  const out = new Map();
-  for (const [key, tally] of map) {
-    const best = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
-    if (best) out.set(key, best[0]);
-  }
-  return out;
 }
 
 function loadImages(folderId) {
@@ -140,7 +98,20 @@ export default async (_req, context) =>
   });
 
 async function respond(eventId) {
-  const folders = await loadFolders();
+  /* 一覧(eventId なし)では Drive の索引とシリーズ名の両方が要る。**同時に取る** —
+   * どちらもキャッシュが切れていると Drive 索引 6 秒 + シリーズ名 7.6 秒(実測)かかり、
+   * 直列にすると Netlify の同期関数の上限(既定 10 秒)を超える。超えると索引が保存されないまま
+   * 打ち切られ、次のリクエストもまた冷たいところからやり直すことになる。
+   * シリーズ名は取れなくても写真は出す(見出しに名前が付かないだけ)ので、失敗は握りつぶす。 */
+  const [folders, series] = await Promise.all([
+    loadFolders(),
+    eventId
+      ? null
+      : seriesMap().catch((err) => {
+          console.warn('[photos] シリーズ名を取得できませんでした:', err.message);
+          return new Map();
+        }),
+  ]);
 
   /* 引数なし: フォルダ一覧をそのまま返す。運営が付けたフォルダ名がこちらでどう
    * 解釈されているか(日付を読めているか・どの種別に入っているか)を、
@@ -150,13 +121,6 @@ async function respond(eventId) {
    * ここが空になっていれば移行完了。 */
   if (!eventId) {
     const { events, categories, unnamed, misplaced } = folders.items;
-    /* シリーズ名は写真まとめの見出しに使う。取れなくても写真は出す(名前が付かないだけ)。 */
-    let series = new Map();
-    try {
-      series = await seriesByDate();
-    } catch (err) {
-      console.warn('[photos] シリーズ名を取得できませんでした:', err.message);
-    }
     return json(
       {
         parentFolderId: appConfig.photoFolderId,
