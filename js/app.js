@@ -2822,15 +2822,26 @@
     syncOpenParam();      // ?photos= を URL に反映(通常の render() を通らないためここで呼ぶ)
   }
 
+  /* フォルダ一覧をどこまでスクロールしていたか(px)。アルバムを開く直前に控えて、
+   * グリッドの「← Photos」で一覧に戻るときだけ復元する(#112)。
+   * 一覧は 1 シリーズで数十件並ぶので、下のほうのアルバムを見て戻るたびに先頭へ飛ぶと
+   * どこを見ていたのか分からなくなっていた。
+   * 新しく開くとき(クイックリンク・?photos= の直リンク)は先頭のままにする。 */
+  var photoFoldersScrollY = 0;
+
   /* 写真まとめを開く。folderId を渡すとそのフォルダのグリッド、省略するとフォルダ一覧。
-   * データが届く前に枠だけ先に描くのは、押した直後に何も起きないように見せないため。 */
-  function openPhotoView(folderId) {
+   * scrollY は描画後に戻す位置(省略時は先頭)。
+   * データが届く前に枠だけ先に描くのは、押した直後に何も起きないように見せないため。
+   *
+   * 復元を render() の直後に置けるのは、タイルが aspect-ratio: 3 / 2 で高さが確定していて
+   * (css の .photo-tile)、表紙画像の遅延読み込みを待たなくても一覧の全高が変わらないため。 */
+  function openPhotoView(folderId, scrollY) {
     state.photoView = { folderId: folderId || null };
     state.rankingOpen = false;  // パネルは同時に 1 つだけ
     state.openedId = null;      // 一覧のカードは閉じる(表示そのものが入れ替わるため)
     stopLivePolling();
     render();
-    window.scrollTo(0, 0);
+    window.scrollTo(0, scrollY || 0);
     ensurePhotoData();
   }
 
@@ -2886,11 +2897,16 @@
     var back = e.target.closest('[data-panel-back]');
     if (back) {
       if (back.dataset.panelBack === 'close') closePanel();
-      else openPhotoView(null);
+      else openPhotoView(null, photoFoldersScrollY);   // 見ていた位置に戻す(#112)
       return;
     }
     var folder = e.target.closest('[data-photo-folder-open]');
-    if (folder) openPhotoView(folder.dataset.photoFolderOpen);
+    if (folder) {
+      /* 戻ってきたときに返す位置。押した瞬間の値を控える — グリッドを描いたあとでは
+       * ページの高さが変わっていて元の位置が取れない。 */
+      photoFoldersScrollY = window.scrollY || window.pageYOffset || 0;
+      openPhotoView(folder.dataset.photoFolderOpen);
+    }
   });
 
   if (quickLinksEl) {
