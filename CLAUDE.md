@@ -185,6 +185,14 @@ Results / 座席表 / POS ランキングの 3 か所すべてがこの規則で
 サマリーは In the Money ではなく **Remaining(翌日へ進む人数)**。**Prize タブ自体は出す** —
 出さないのは Results の賞金であって、ペイアウト表は通過日にも見たい(運営の指定)。
 
+**逆に、終了した大会(単日・複数日の最終日)では Prize タブを出さない**(#109)。Results が
+Rank / Player / Prize (/ Points) を出しており、ペイアウト表と同じ賞金が 2 か所に並ぶため。
+Results の表示は上位 9 位までだが、**賞金が付く順位のぶんだけ自動で広がる**
+(`finalResultTable()` の `lastPlace`)ので情報は落ちない。条件は
+`ev.status !== 'past' || ev.carryOver`。**Prize サマリーは Guaranteed と In the Money の 2 枚**
+(先頭にあった Prize Pool は、受付中に保証額と同額のカードが 2 枚並ぶため廃止。開催中・通過日の
+実額は Live / Survivors のサマリーに出ている)。
+
 **通過日かどうかの判定は `summaryId` でグループ化し `dailyDetails.day` の最大値と比べる**(#54)。
 `summaryId` は同じ大会の全日程が共有する親レコードのキーで、946 件中 70 件
 (= `behaviour.isFlight` が true の日別レコード)にだけ入る。詳細では

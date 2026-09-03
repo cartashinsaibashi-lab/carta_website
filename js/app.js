@@ -141,10 +141,21 @@
       tabs.push({ key: 'results', label: ev.carryOver ? 'Survivors' : 'Results' });
     }
     tabs.push({ key: 'info', label: 'Info' });
-    /* Prize タブは通過日にも出す。#44 で一度隠したが、あれは「通過日の Results に
-     * 賞金を出さない」という話で、ペイアウト表そのものは通過日にも見たい(運営の指定)。
-     * この日のレコードに紐づくペイアウトは大会全体のもので、賞金額としては正しい。 */
-    tabs.push({ key: 'prize', label: 'Prize' });
+    /* Prize タブは終了した大会(単日と、複数日の最終日)には出さない(#109)。
+     * 終了後の Results は Rank / Player / Prize (/ Points) を出しており、ペイアウト表と
+     * 同じ賞金を 2 か所で見せていた。Results の表示は上位 9 位までだが、賞金が付く順位の
+     * ぶんだけ自動で広がる(finalResultTable() の lastPlace)ので、Prize タブを消しても
+     * 賞金の情報は落ちない。
+     *
+     * 通過日だけは出す。その日の Results は Survivors(Rank / Player / Chips)で賞金を
+     * 出さないため、ペイアウト表が賞金を見られる唯一の場所になる。#44 で一度隠したのは
+     * 「通過日の Results に賞金を出さない」という話で、ペイアウト表そのものは通過日にも
+     * 見たい(運営の指定)。この日のレコードに紐づくペイアウトは大会全体のもので、
+     * 賞金額としては正しい。
+     *
+     * 選択中のタブが消える場合(終了した大会で Prize を開いたまま再描画)は、cardHtml() が
+     * state.openedTab を tabsFor() の結果と突き合わせて先頭のタブに戻す。 */
+    if (ev.status !== 'past' || ev.carryOver) tabs.push({ key: 'prize', label: 'Prize' });
     tabs.push({ key: 'structure', label: 'Structure' });
     /* 写真タブは Drive に写真があった大会にだけ出す。写真は運営が任意で上げるもので、
      * 大半の大会には無いため、常設すると「開いても空」のタブばかりになる。
@@ -878,16 +889,22 @@
     return 'style="--sx:' + (-Math.sin(th)).toFixed(4) + ';--cy:' + Math.cos(th).toFixed(4) + '"';
   }
 
-  /* 賞金分配(Prize)パネル — 開催中・受付中・終了の全大会に共通で表示。
+  /* 賞金分配(Prize)パネル — 受付中・開催中と、通過日に出す(終了した大会は Results と
+   * 内容が重複するのでタブごと出さない。tabsFor() 参照)。
    * GET /v1/event/{id}/payouts の確定ペイアウトを優先し、未設定の大会だけ
    * 標準配分モデルにフォールバックする。 */
   function prizePanel(ev) {
     var pool = ev.stats.prizePool || ev.guarantee || 0;   // 受付中は保証賞金を基準に表示
     var poolKnown = pool > 0;
-    var poolLabel = ev.status === 'future' ? 'Guaranteed Prize Pool' : 'Prize Pool';
+    /* サマリーは Guaranteed と In the Money の 2 枚(#109)。以前は先頭に Prize Pool
+     * (受付中は Guaranteed Prize Pool)も置いていたが、受付中は賞金プールが保証額そのもの
+     * なので、まったく同じ金額のカードが 2 枚並んでいた。開催中と通過日は実額が入って値は
+     * 変わるものの、その実額は Live タブと Survivors タブのサマリーにそれぞれ出ているため
+     * ここから消しても情報は落ちない。
+     * 2 枚にすると iPhone 12(390px)でも 1 行に収まる(.summary-item は flex: 1 /
+     * min-width: 140px で、3 枚だと 2 枚 + 1 枚に折り返していた)。 */
     var summary =
       '<div class="result-summary">' +
-      summaryItem(poolLabel, poolKnown ? yen(pool) : 'TBD') +
       summaryItem('Guaranteed', ev.guarantee ? yen(ev.guarantee) : 'None') +
       summaryItem('In the Money', ev.stats.itm > 0 ? ev.stats.itm + ' players' : 'TBD') +
       '</div>';
