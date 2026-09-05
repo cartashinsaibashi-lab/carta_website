@@ -9,6 +9,9 @@
 :root {
   --radius: 12px;
   --header-h: 70px;
+  /* パネル見出し(.panel-head)の高さ。シリーズ帯を貼り付ける位置の計算に使う。
+   * 実際の高さは描画のたびに app.js が実測して上書きするので、ここは表示前の初期値。 */
+  --panel-head-h: 55px;
   /* フォントは Noto Sans JP に統一。display / mincho も同一スタックを指す。 */
   --font-body: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
   --font-display: var(--font-body);
@@ -2987,12 +2990,25 @@ body[data-view] .status-filter { display: none; }
   gap: 12px;
 }
 
+/* 見出しはサイトヘッダーの下に貼り付ける(2026-09-05 の運営指定)。
+ * 写真は縦に長く続くので、戻るボタンと「今どの大会を見ているか」が常に見えるようにする。
+ *
+ * 下地を塗るのは、貼り付いている間そこを写真が流れるため。
+ * PC では .content-panel(= --bg-elevated)の上に乗るので同じ色で塗れば継ぎ目が出ない。
+ * スマホは .content-panel の背景が外れて body の地の上に来るので、下のスマホ用ブロックで
+ * ヘッダーと同じ半透明 + ぼかしに差し替える(単色だと背景の月光・地紋がそこだけ消える)。
+ *
+ * z-index はシリーズ帯(30)より上、サイトヘッダー(100)より下。 */
 .panel-head {
+  position: sticky;
+  top: var(--header-h);
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px 0px;
+  background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
 }
 
@@ -3027,12 +3043,38 @@ body[data-view] .status-filter { display: none; }
 
 .panel-note { padding: 12px 2px; }
 
-/* フォルダ一覧。表紙画像は出さない(何十件も並ぶので開いた瞬間の読み込みが重くなる)ため、
- * 情報は大会名と開催日だけ。押せる行だと分かるようカードと同じ地色・枠にしている。 */
+/* フォルダ一覧。シリーズごとの塊(.photo-series)を縦に並べる。 */
 .photo-folders {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* シリーズ 1 つぶんの塊。帯 + そのシリーズのタイル。
+ * 塊で包んでいるのは、帯を貼り付ける範囲をこの中だけに閉じ込めるため —
+ * sticky は「はみ出さない親」までしか付いて回らないので、次のシリーズの帯が
+ * 下から押し上げて入れ替わる(見えている帯が今のシリーズと必ず一致する)。 */
+.photo-series {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* シリーズの帯。見た目は大会一覧の日付区切り(.date-divider)のまま、位置だけ変える。
+ *
+ * 貼り付く位置はサイトヘッダーとパネル見出しの下。見出しの高さは描画のたびに
+ * app.js の syncPanelHeadOffset() が実測して --panel-head-h に入れる(下の値は初期値)。
+ *
+ * 地色を敷くのは、貼り付いている間その裏を写真が流れるため。.date-divider の背景は
+ * 半透明のアクセントなので、そのままだと写真が透ける。同じ濃さのアクセントを
+ * 画像レイヤーとして重ね、色レイヤーに不透明な地色を置いて見た目を保つ。 */
+.photo-series-head {
+  position: sticky;
+  top: calc(var(--header-h) + var(--panel-head-h));
+  z-index: 30;
+  background-color: var(--bg-elevated);
+  background-image: linear-gradient(
+    rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.16));
 }
 
 /* 写真まとめのタイル(#102)。カード全体が表紙写真で、大会名を下に重ねる。
@@ -3271,6 +3313,26 @@ body[data-view] .status-filter { display: none; }
 
   .panel-head { gap: 8px; }
   .panel-title { font-size: 14px; }
+
+  /* 貼り付く見出し・シリーズ帯の下地。スマホでは .content-panel の背景が外れて
+   * body の地(+ 固定の月光/地紋)の上に来るため、--bg-elevated で塗ると帯のところだけ
+   * 色が浮き、背景の演出も消える。サイトヘッダーと同じ半透明 + ぼかしにそろえる。 */
+  .panel-head,
+  .photo-series-head {
+    background-color: var(--header-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  /* 見出しも画面端まで全幅にする。シリーズ帯は端まで伸びている(下の .date-divider の
+   * 負のマージン)ので、見出しを内側の幅のままにすると、帯が見出しの裏へ流れていくときに
+   * 左右 14px だけ帯の色が覗いて見える。日付バー・状況フィルタと同じ作りにそろえる。 */
+  .panel-head {
+    margin-left: -14px;
+    margin-right: -14px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
 
   /* カード: コンパクト表示 */
   .card-expand { padding: 5px 12px; gap: 8px; }
