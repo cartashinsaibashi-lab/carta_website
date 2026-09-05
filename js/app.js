@@ -1332,9 +1332,12 @@
     return m ? dateHeaderText(Number(m[1]), Number(m[2]), Number(m[3])) : String(iso || '');
   }
 
-  /* 日付見出しの HTML。大会一覧と写真まとめで同じ見た目にするため 1 か所にまとめる。 */
-  function dateDividerHtml(label) {
-    return '<div class="date-divider"><span class="date-divider-label">' + esc(label) + '</span></div>';
+  /* 日付見出しの HTML。大会一覧と写真まとめで同じ見た目にするため 1 か所にまとめる。
+   * extraClass は写真まとめのシリーズ帯(貼り付く見出し)だけが渡す — 見た目は同じで
+   * 位置の指定だけが違うので、別のクラスにせず追加のクラスで上書きする。 */
+  function dateDividerHtml(label, extraClass) {
+    return '<div class="date-divider' + (extraClass ? ' ' + extraClass : '') + '">' +
+      '<span class="date-divider-label">' + esc(label) + '</span></div>';
   }
 
   /* カード列を日付ごとに区切って HTML 化。日付が変わる位置に見出しを、
@@ -2740,7 +2743,11 @@
 
   /* 一覧を差し替えるパネル(写真まとめ #74 / ランキング #78)共通の見出し。
    * 戻り先は「グリッド → フォルダ一覧」「フォルダ一覧 → 大会一覧」のように変わるので、
-   * 戻り先とラベルを引数で受ける。 */
+   * 戻り先とラベルを引数で受ける。
+   *
+   * この見出しはスクロールしてもヘッダーの下に貼り付く(css の .panel-head)。
+   * 写真は縦に数十件・数百枚と続き、戻るボタンが一覧の一番上にしか無いと、
+   * 下まで見てから戻るのに毎回スクロールし直すことになるため(運営の指定 2026-09-05)。 */
   function panelHeadHtml(backAction, backLabel, title, sub) {
     return (
       '<div class="panel-head">' +
@@ -2773,10 +2780,15 @@
      * 日付と枚数は出さない — 日付はシリーズの帯にあり、枚数は開けば分かる。
      *
      * 表紙が無いフォルダ(Drive を読めなかった / 写真 0 枚)は、写真の場所を
-     * 空けたまま名前だけ出す。タイルの大きさが揃うので並びが崩れない。 */
+     * 空けたまま名前だけ出す。タイルの大きさが揃うので並びが崩れない。
+     *
+     * シリーズごとに <section> で包むのは、帯を貼り付ける範囲をそのシリーズだけに
+     * 限るため(css の .photo-series)。包まずに帯を sticky にすると、一覧の最後まで
+     * 最初のシリーズの帯が居座って「今どのシリーズを見ているか」が嘘になる。 */
     var items = '';
     groups.forEach(function (g) {
-      items += dateDividerHtml(g.label);
+      items += '<section class="photo-series">';
+      items += dateDividerHtml(g.label, 'photo-series-head');
       items += '<div class="photo-tiles">';
       g.folders.forEach(function (f) {
         var cover = f.cover
@@ -2791,13 +2803,17 @@
           '</button>';
       });
       items += '</div>';
+      items += '</section>';
     });
     return head + '<div class="photo-folders">' + items + '</div>';
   }
 
+  /* アルバム(フォルダ 1 つぶんの写真)。
+   * 見出しに日付は出さない(運営の指定 2026-09-05)— 開催日はフォルダ一覧のシリーズ帯で
+   * 分かるうえ、この画面で見たいのは写真そのものなので、貼り付く見出しは低いほどよい。 */
   function photoGridHtml(folderId) {
     var f = findPhotoFolder(folderId);
-    var head = panelHeadHtml('folders', 'Photos', f ? (f.title || f.name) : 'Photos', f ? f.date : '');
+    var head = panelHeadHtml('folders', 'Photos', f ? (f.title || f.name) : 'Photos', '');
     var st = folderPhotosState[folderId];
     if (st !== 'loaded') {
       return head + panelNote(st === 'error' ? 'Photos are temporarily unavailable.' : 'Loading…');
@@ -2812,6 +2828,17 @@
     );
   }
 
+  /* シリーズ帯を貼り付ける位置(= サイトヘッダー + パネル見出しの高さ)を CSS に渡す。
+   *
+   * 帯は見出しのすぐ下に貼り付けたいが、CSS だけでは上に居る 2 つの sticky の高さを
+   * 足せない。見出しの高さは戻るボタンの文字サイズやスマホ幅の指定で変わるので、
+   * 決め打ちにすると数 px ずれて「帯が見出しに潜り込む」か「隙間から写真が覗く」。
+   * 描画のたびに実測して --panel-head-h に入れる(初期値は css 側の 55px)。 */
+  function syncPanelHeadOffset() {
+    var head = listEl.querySelector('.panel-head');
+    if (head) listEl.style.setProperty('--panel-head-h', head.offsetHeight + 'px');
+  }
+
   function renderPhotoView() {
     document.body.dataset.view = 'photos';   // 日付・状況フィルタを隠す(この画面では効かないため)
     listEl.innerHTML =
@@ -2819,8 +2846,15 @@
       (state.photoView.folderId ? photoGridHtml(state.photoView.folderId) : photoFoldersHtml()) +
       '</div>';
     emptyEl.hidden = true;
+    syncPanelHeadOffset();
     syncOpenParam();      // ?photos= を URL に反映(通常の render() を通らないためここで呼ぶ)
   }
+
+  /* 画面幅が変わると見出しの高さも変わる(スマホ幅で文字が縮む・大会名の折り返しが増える)。
+   * パネルを開いている間だけ測り直す。 */
+  window.addEventListener('resize', function () {
+    if (state.photoView) syncPanelHeadOffset();
+  });
 
   /* フォルダ一覧をどこまでスクロールしていたか(px)。アルバムを開く直前に控えて、
    * グリッドの「← Photos」で一覧に戻るときだけ復元する(#112)。
