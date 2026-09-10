@@ -2880,11 +2880,18 @@
   }
 
   /* どのパネルが開いていても閉じて大会一覧に戻す。
-   * 戻るボタンは共通なので、閉じ方も 1 か所にまとめてある。 */
+   * 戻るボタンは共通なので、閉じ方も 1 か所にまとめてある。
+   *
+   * 戻ったら**必ず先頭へ**(運営の指定 2026-09-10)。パネルは listEl の中身を
+   * 差し替えるだけでページのスクロールはそのまま残るため、アルバム一覧を下まで見てから
+   * 「← Tournaments」を押すと、大会一覧の途中 — しかも高さが違うので無関係な位置 —
+   * から始まって、日付フィルタも見えないまま放り出されていた。
+   * アルバム一覧に戻るときだけは見ていた位置を復元する(#112 / photoFoldersScrollY)。 */
   function closePanel() {
     state.photoView = null;
     state.rankingOpen = false;
     render();
+    window.scrollTo(0, 0);
   }
 
   /* 表示に必要なデータを取りに行き、届いたら描き直す。
@@ -3085,6 +3092,7 @@
   /* 種別の切り替え。ヘッダーのタブと、初回表示の選択画面の両方から呼ぶ。 */
   function selectCategory(category) {
     state.openedId = null;
+    var wasPanel = !!(state.photoView || state.rankingOpen);
     /* パネルを開いたまま種別を切り替えたときは、**その種別の内容に差し替える**(#78)。
      * ただし出せるものが無い種別(歌留多にはランキングも写真もある種別フォルダも無い)では
      * 閉じて一覧に戻す — 戻る導線が無いまま空のパネルが残るのを防ぐため。
@@ -3098,6 +3106,11 @@
     renderMonthNav();
     renderDateStrip();
     render();
+    /* パネルから大会一覧へ落ちたとき(歌留多のように出せるものが無い種別へ切り替えた場合)も
+     * closePanel() と同じく先頭から見せる。パネルは縦に長いので、残ったスクロール量のまま
+     * 一覧を出すと途中から始まってしまう。パネルを開いたまま種別を差し替えた場合は
+     * 一覧に戻っていないので触らない(従来どおり)。 */
+    if (wasPanel && !state.photoView && !state.rankingOpen) window.scrollTo(0, 0);
     if (state.rankingOpen) ensureRankingData();   // 切替先の順位表を取りに行く(#78)
   }
 
